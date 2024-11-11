@@ -27,6 +27,7 @@ go.work.sum
 *.private.http
 *.private.json
 *.private.md
+*.private.toml
 
 .env
 
