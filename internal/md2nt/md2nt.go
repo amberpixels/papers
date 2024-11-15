@@ -2,9 +2,11 @@
 package md2nt
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/jomei/notionapi"
 	"github.com/yuin/goldmark"
@@ -39,89 +41,136 @@ func (p *Parser) ParseFile(filename string) error {
 	return nil
 }
 
+var (
+	// ErrMustBeNotionBlock is returned when a given node can't be parsed as RichText but is a separate notion block
+	ErrMustBeNotionBlock = errors.New("given node must be a separate notion block")
+
+	// ErrMdNodeNotSupported is returned when a given markdown node is not supported
+	ErrMdNodeNotSupported = errors.New("given markdown node is not supported")
+)
+
+// RichTextConstructor is func that makes a notionapi.RichText from given []bytes source
+// It's being used primarily to be returned from functions like `constructRichText` -
+// so that function can delay using "source" for a later stage
+type RichTextConstructor func(source []byte) *notionapi.RichText
+
+// constructRichText returns a RichTextConstructor for a given node
+// RichTextConstructor then can be called with a given source to construct a ready-to-use notion RichText object
+// When given node can't be constructed as a RichText, ErrMustBeNotionBlock is returned
+func constructRichText(node ast.Node) (RichTextConstructor, error) {
+	switch v := node.(type) {
+	case *ast.Heading:
+		return func(source []byte) *notionapi.RichText {
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
+			}
+		}, nil
+
+	case *ast.Text:
+		return func(source []byte) *notionapi.RichText {
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{Content: string(v.Value(source))},
+			}
+		}, nil
+	case *ast.FencedCodeBlock:
+		return func(source []byte) *notionapi.RichText {
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
+			}
+		}, nil
+	case *ast.AutoLink:
+		return func(source []byte) *notionapi.RichText {
+			link := string(v.URL(source))
+			label := string(v.Label(source))
+
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{
+					Content: label,
+					Link:    &notionapi.Link{Url: link},
+				}}
+		}, nil
+	case *ast.RawHTML:
+		return func(source []byte) *notionapi.RichText {
+			content := html2notion(
+				string(contentFromSegments(v.Segments, source)),
+			)
+
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{Content: content},
+			}
+		}, nil
+	case *ast.HTMLBlock:
+		return func(source []byte) *notionapi.RichText {
+			content := html2notion(
+				string(contentFromLines(v, source)),
+			)
+			return &notionapi.RichText{
+				Type: notionapi.ObjectTypeText,
+				Text: &notionapi.Text{Content: content},
+			}
+		}, nil
+	case *ast.Image:
+		return nil, ErrMustBeNotionBlock
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrMdNodeNotSupported, node.Kind().String())
+	}
+}
+
 func flattened(node ast.Node, source []byte) ([]notionapi.RichText, notionapi.Blocks) {
 	children := make([]notionapi.Block, 0)
 
 	// Final point: If no has no children, try to get its content via Lines, Segment, etc
 	if node.ChildCount() == 0 {
-		switch v := node.(type) {
-		case *ast.Heading:
-			return []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
-				},
-			}, nil
-		case *ast.Text:
-			return []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: string(v.Value(source))},
-				},
-			}, nil
-		case *ast.FencedCodeBlock:
-			return []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
-				},
-			}, nil
-		case *ast.AutoLink:
-			link := string(v.URL(source))
-			label := string(v.Label(source))
-			return []notionapi.RichText{{
-				Text: &notionapi.Text{
-					Content: label,
-					Link:    &notionapi.Link{Url: link},
-				},
-			}}, nil
-		case *ast.RawHTML:
-			content := contentFromSegments(v.Segments, source)
+		richTextFn, err := constructRichText(node)
+		if err != nil && !errors.Is(err, ErrMustBeNotionBlock) {
+			panic(err)
+		}
 
-			return []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: html2notion(string(content))},
-				},
-			}, nil
-		case *ast.HTMLBlock:
-			content := contentFromLines(v, source)
+		richTexts := make([]notionapi.RichText, 0)
+		if richTextFn != nil {
+			richTexts = append(richTexts, *(richTextFn(source)))
+		}
+		var blocks notionapi.Blocks
 
-			return []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: html2notion(string(content))},
-				},
-			}, nil
-		case *ast.Image:
-			dest := string(v.Destination)
+		if errors.Is(err, ErrMustBeNotionBlock) {
+			switch v := node.(type) {
+			case *ast.Image:
 
-			img := notionapi.Image{
-				Type: notionapi.FileTypeExternal,
-				External: &notionapi.FileObject{
-					URL: dest,
-				},
-			}
-			if v.Title != nil {
-				img.Caption = []notionapi.RichText{
-					{
-						Type: notionapi.ObjectTypeText,
-						Text: &notionapi.Text{Content: string(v.Title)},
+				img := notionapi.Image{
+					Type: notionapi.FileTypeExternal,
+					External: &notionapi.FileObject{
+						URL: string(v.Destination),
 					},
 				}
+				if v.Title != nil { // here, v.Title is probably will always be empty, but anyway
+					img.Caption = []notionapi.RichText{
+						{
+							Type: notionapi.ObjectTypeText,
+							Text: &notionapi.Text{Content: string(v.Title)},
+						},
+					}
+				}
+
+				blocks = []notionapi.Block{&notionapi.ImageBlock{
+					BasicBlock: notionapi.BasicBlock{
+						Object: notionapi.ObjectTypeBlock,
+						Type:   notionapi.BlockTypeImage,
+					},
+					Image: img,
+				}}
+			default:
+				panic(fmt.Sprintf("-> unhandled final node type: %s", node.Kind().String()))
 			}
 
-			return nil, []notionapi.Block{&notionapi.ImageBlock{
-				BasicBlock: notionapi.BasicBlock{
-					Object: notionapi.ObjectTypeBlock,
-					Type:   notionapi.BlockTypeImage,
-				},
-				Image: img,
-			}}
-
-		default:
-			panic(fmt.Sprintf("unhandled final node type: %s", node.Kind().String()))
+			// handle as image
 		}
+
+		return richTexts, blocks
 	}
 
 	// If has children: recursively iterate and flatten results
@@ -157,6 +206,34 @@ func flattened(node ast.Node, source []byte) ([]notionapi.RichText, notionapi.Bl
 		case *ast.Link:
 			for i := range flattenedRichTexts {
 				attachLink(&flattenedRichTexts[i], string(v.Destination))
+			}
+
+		case *ast.Image:
+			img := notionapi.Image{
+				Type: notionapi.FileTypeExternal,
+				External: &notionapi.FileObject{
+					URL: string(v.Destination),
+				},
+			}
+			if len(flattenedRichTexts) > 0 {
+				parts := make([]string, 0)
+				for _, frt := range flattenedRichTexts {
+					parts = append(parts, frt.Text.Content)
+				}
+				img.Caption = []notionapi.RichText{
+					{
+						Type: notionapi.ObjectTypeText,
+						Text: &notionapi.Text{Content: strings.Join(parts, " ")},
+					},
+				}
+				flattenedRichTexts = nil
+				children = append(children, &notionapi.ImageBlock{
+					BasicBlock: notionapi.BasicBlock{
+						Object: notionapi.ObjectTypeBlock,
+						Type:   notionapi.BlockTypeImage,
+					},
+					Image: img,
+				})
 			}
 		default:
 			fmt.Println("Unhandled child's type: ", v.Kind().String())
