@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/amberpixels/papers/internal/md2nt"
+	"github.com/amberpixels/peppers/internal/jalapeno"
 	"github.com/joho/godotenv"
 	"github.com/jomei/notionapi"
 	"github.com/yuin/goldmark"
@@ -48,7 +48,7 @@ func notionTest() {
 		panic(err)
 	}
 
-	p := md2nt.NewParser(goldmark.New(
+	p := jalapeno.NewParser(goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),

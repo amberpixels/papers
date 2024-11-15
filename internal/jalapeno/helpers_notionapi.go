@@ -1,4 +1,4 @@
-package md2nt
+package jalapeno
 
 import (
 	"strings"

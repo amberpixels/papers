@@ -1,5 +1,5 @@
-// Package md2nt provides a function to convert markdown (parsed) into a Notion block tree
-package md2nt
+// Package jalapeno is a library that provides Markdown -> Notion convertion
+package jalapeno
 
 import (
 	"errors"
