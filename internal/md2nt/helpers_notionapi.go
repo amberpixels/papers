@@ -2,45 +2,7 @@ package md2nt
 
 import (
 	"strings"
-
-	"github.com/jomei/notionapi"
 )
-
-func annotateBold(t *notionapi.RichText) {
-	if t.Annotations == nil {
-		t.Annotations = &notionapi.Annotations{}
-	}
-	t.Annotations.Bold = true
-}
-
-func annotateItalic(t *notionapi.RichText) {
-	if t.Annotations == nil {
-		t.Annotations = &notionapi.Annotations{}
-	}
-	t.Annotations.Italic = true
-}
-
-func annotateStrikethrough(t *notionapi.RichText) {
-	if t.Annotations == nil {
-		t.Annotations = &notionapi.Annotations{}
-	}
-	t.Annotations.Strikethrough = true
-}
-
-func annotateCode(t *notionapi.RichText) {
-	if t.Annotations == nil {
-		t.Annotations = &notionapi.Annotations{}
-	}
-	t.Annotations.Code = true
-}
-
-func attachLink(t *notionapi.RichText, url string) {
-	if t.Text == nil {
-		t.Text = &notionapi.Text{}
-	}
-
-	t.Text.Link = &notionapi.Link{Url: url}
-}
 
 func sanitizeBlockLanguage(language string) string {
 	if language == "" {

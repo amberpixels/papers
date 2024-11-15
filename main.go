@@ -11,7 +11,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/jomei/notionapi"
 	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 )
@@ -43,74 +42,36 @@ func main() {
 }
 
 func notionTest() {
-	md := goldmark.New(
+
+	source, err := os.ReadFile(ParamFileName)
+	if err != nil {
+		panic(err)
+	}
+
+	p := md2nt.NewParser(goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
-	)
+	))
 
-	p := md2nt.NewParser(md)
-	if err := p.ParseFile(ParamFileName); err != nil {
+	blocks, props, err := p.ParsePage(source)
+	if err != nil {
 		panic(err)
 	}
 
-	notionBlocks := make([]notionapi.Block, 0)
-
-	err := p.Walk(func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering || node.Kind() == ast.KindDocument {
-			return ast.WalkContinue, nil
-		}
-
-		blocks := p.ToNotionBlocks(node)
-
-		notionBlocks = append(notionBlocks, blocks...)
-		return ast.WalkSkipChildren, nil
-	})
-
-	if err != nil {
-		fmt.Println("Walrking error = ", err)
-		panic("failed to walk AST")
-	}
-
-	var docTitle []notionapi.RichText
-	if len(notionBlocks) > 0 {
-		for i, block := range notionBlocks {
-			if block.GetType() == notionapi.BlockTypeHeading1 {
-				docTitle = block.(*notionapi.Heading1Block).Heading1.RichText
-				// delete the i block
-				notionBlocks = append(notionBlocks[:i], notionBlocks[i+1:]...)
-				break
-
-			}
-		}
-		// TODO(amberpixels): handle headings equality spread (H1-H6 of markdown) spread into H1-H3 of notion
-	}
-	if len(docTitle) == 0 {
-		docTitle = []notionapi.RichText{{Text: &notionapi.Text{Content: fmt.Sprintf("Unnamed Document (Generated from %s)", ParamFileName)}}}
-	}
-
-	properties := notionapi.Properties{
-		string(notionapi.PropertyConfigTypeTitle): notionapi.TitleProperty{
-			Title: docTitle,
-		},
-	}
-
-	// Create a new client
-	client := notionapi.NewClient(notionapi.Token(ParamNotionAPIToken))
-
-	// Define the new page request with template
-	newPage := &notionapi.PageCreateRequest{
+	pageReq := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
 			Type:   notionapi.ParentTypePageID,
 			PageID: notionapi.PageID(ParamNotionParentPageID),
 		},
-		Properties: properties,
-		Children:   notionBlocks,
+		Properties: props,
+		Children:   blocks,
 	}
 
-	// Create the new page
-	p1, err := client.Page.Create(context.Background(), newPage)
+	client := notionapi.NewClient(notionapi.Token(ParamNotionAPIToken))
+
+	p1, err := client.Page.Create(context.Background(), pageReq)
 	if err != nil {
 		log.Fatalf("Failed to create Notion page: %v", err)
 	}

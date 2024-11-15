@@ -5,164 +5,203 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 
-	"github.com/jomei/notionapi"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	astExt "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/text"
+	nt "github.com/jomei/notionapi"
+	md "github.com/yuin/goldmark"
+	mdast "github.com/yuin/goldmark/ast"
+	mdastx "github.com/yuin/goldmark/extension/ast"
+	mdtext "github.com/yuin/goldmark/text"
 )
 
+// Parser stands for an instance
 type Parser struct {
-	source []byte
-
-	md     goldmark.Markdown
-	parsed ast.Node
+	mdParser md.Markdown
 }
 
-func NewParser(md goldmark.Markdown) *Parser {
-	return &Parser{md: md}
+func NewParser(mdParser md.Markdown) *Parser {
+	return &Parser{mdParser: mdParser}
 }
 
-func (p *Parser) Parse(source []byte) {
-	p.parsed = p.md.Parser().Parse(text.NewReader(source))
-	p.source = source
-}
+// ParsePage parses the given markdown source into blocks and properties of a Notion page
+func (p *Parser) ParsePage(source []byte) (nt.Blocks, nt.Properties, error) {
+	tree := p.mdParser.Parser().Parse(mdtext.NewReader(source))
 
-func (p *Parser) ParseFile(filename string) error {
-	source, err := os.ReadFile(filename)
+	blockBuilders := make(NtBlockBuilders, 0)
+	err := mdast.Walk(tree, func(node mdast.Node, entering bool) (mdast.WalkStatus, error) {
+		if !entering || node.Kind() == mdast.KindDocument {
+			return mdast.WalkContinue, nil
+		}
+
+		blockBuilders = append(blockBuilders, MdNode2NtBlocks(node)...)
+
+		return mdast.WalkSkipChildren, nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return nil, nil, fmt.Errorf("failed to walk parsed Markdown AST: %w", err)
 	}
 
-	p.Parse(source)
-	return nil
+	blocks := blockBuilders.Build(source)
+
+	// TODO(amberpixels): handle headings equality spread (H1-H6 of markdown) spread into H1-H3 of notion
+	//                   The thing should be configurable
+
+	var pageTitle []nt.RichText
+	if len(blocks) > 0 {
+		for i, block := range blocks {
+			if block.GetType() == nt.BlockTypeHeading1 {
+				pageTitle = block.(*nt.Heading1Block).Heading1.RichText
+				// delete this block
+				blocks = append(blocks[:i], blocks[i+1:]...)
+				break
+			}
+		}
+	}
+	if len(pageTitle) == 0 {
+		// TODO(amberpixels): default title should be configurable
+		pageTitle = []nt.RichText{{Text: &nt.Text{Content: "Unnamed Document"}}}
+	}
+
+	properties := nt.Properties{
+		string(nt.PropertyConfigTypeTitle): nt.TitleProperty{
+			Title: pageTitle,
+		},
+	}
+
+	return blocks, properties, nil
 }
 
 var (
-	// ErrMustBeNotionBlock is returned when a given node can't be parsed as RichText but is a separate notion block
-	ErrMustBeNotionBlock = errors.New("given node must be a separate notion block")
+	// ErrMustBeNtBlock is returned when a given node can't be parsed as RichText but is a separate notion block
+	ErrMustBeNtBlock = errors.New("given node must be a separate notion block")
 
 	// ErrMdNodeNotSupported is returned when a given markdown node is not supported
 	ErrMdNodeNotSupported = errors.New("given markdown node is not supported")
 )
 
-// RichTextConstructor is func that makes a notionapi.RichText from given []bytes source
-// It's being used primarily to be returned from functions like `constructRichText` -
-// so that function can delay using "source" for a later stage
-type RichTextConstructor func(source []byte) *notionapi.RichText
-
-// constructRichText returns a RichTextConstructor for a given node
+// ToRichText returns a NtRichTextBuilder for a given node
 // RichTextConstructor then can be called with a given source to construct a ready-to-use notion RichText object
-// When given node can't be constructed as a RichText, ErrMustBeNotionBlock is returned
-func constructRichText(node ast.Node) (RichTextConstructor, error) {
+// When given node can't be constructed as a RichText, ErrMustBeNtBlock is returned
+func ToRichText(node mdast.Node) (*NtRichTextBuilder, error) {
 	switch v := node.(type) {
-	case *ast.Heading:
-		return func(source []byte) *notionapi.RichText {
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
+	case *mdast.Heading:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{Content: string(contentFromLines(v, source))},
 			}
-		}, nil
+		}), nil
 
-	case *ast.Text:
-		return func(source []byte) *notionapi.RichText {
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{Content: string(v.Value(source))},
+	case *mdast.Text:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{Content: string(v.Value(source))},
 			}
-		}, nil
-	case *ast.FencedCodeBlock:
-		return func(source []byte) *notionapi.RichText {
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{Content: string(contentFromLines(v, source))},
+		}), nil
+	case *mdast.FencedCodeBlock:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{Content: string(contentFromLines(v, source))},
 			}
-		}, nil
-	case *ast.AutoLink:
-		return func(source []byte) *notionapi.RichText {
+		}), nil
+	case *mdast.AutoLink:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			link := string(v.URL(source))
 			label := string(v.Label(source))
 
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{
 					Content: label,
-					Link:    &notionapi.Link{Url: link},
+					Link:    &nt.Link{Url: link},
 				}}
-		}, nil
-	case *ast.RawHTML:
-		return func(source []byte) *notionapi.RichText {
+		}), nil
+	case *mdast.RawHTML:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			content := html2notion(
 				string(contentFromSegments(v.Segments, source)),
 			)
 
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{Content: content},
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{Content: content},
 			}
-		}, nil
-	case *ast.HTMLBlock:
-		return func(source []byte) *notionapi.RichText {
+		}), nil
+	case *mdast.HTMLBlock:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			content := html2notion(
 				string(contentFromLines(v, source)),
 			)
-			return &notionapi.RichText{
-				Type: notionapi.ObjectTypeText,
-				Text: &notionapi.Text{Content: content},
+
+			return &nt.RichText{
+				Type: nt.ObjectTypeText,
+				Text: &nt.Text{Content: content},
 			}
-		}, nil
-	case *ast.Image:
-		return nil, ErrMustBeNotionBlock
+		}), nil
+	case *mdast.Image:
+		return nil, ErrMustBeNtBlock
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrMdNodeNotSupported, node.Kind().String())
 	}
 }
 
-func flattened(node ast.Node, source []byte) ([]notionapi.RichText, notionapi.Blocks) {
-	children := make([]notionapi.Block, 0)
+// flatten flattens given MD ast node into series of Notion RichTexts and (optionally) Blocks.
+// RichTexts and Blocks are returned as builders, so later they can be built with given source bytes.
+// Flattening is a required process because Markdown deeply nested can be shown as flat notion blocks or rich texts.
+//
+// Examples:
+//
+//   - Markdown's Header (with all its deep children) can only be flat Notion's Header with rich texts inside. /
+//
+//   - Markdown's Image (with possible children in its title) can only be Notion's Block
+//
+// TODO(amberpixels): consider refactoring as this function should be split into two: on for rich text and one for block
+//   - this can be achieved if we have a knowledge on how each mdast.Node should be converted.
+func flatten(node mdast.Node) (richTexts NtRichTextBuilders, blocks NtBlockBuilders) {
+	richTexts = make(NtRichTextBuilders, 0)
+	blocks = make(NtBlockBuilders, 0)
 
 	// Final point: If no has no children, try to get its content via Lines, Segment, etc
 	if node.ChildCount() == 0 {
-		richTextFn, err := constructRichText(node)
-		if err != nil && !errors.Is(err, ErrMustBeNotionBlock) {
+		richText, err := ToRichText(node)
+		if err != nil && !errors.Is(err, ErrMustBeNtBlock) {
 			panic(err)
 		}
 
-		richTexts := make([]notionapi.RichText, 0)
-		if richTextFn != nil {
-			richTexts = append(richTexts, *(richTextFn(source)))
+		if richText != nil {
+			richTexts = append(richTexts, richText)
 		}
-		var blocks notionapi.Blocks
 
-		if errors.Is(err, ErrMustBeNotionBlock) {
+		if errors.Is(err, ErrMustBeNtBlock) {
 			switch v := node.(type) {
-			case *ast.Image:
-
-				img := notionapi.Image{
-					Type: notionapi.FileTypeExternal,
-					External: &notionapi.FileObject{
-						URL: string(v.Destination),
-					},
-				}
-				if v.Title != nil { // here, v.Title is probably will always be empty, but anyway
-					img.Caption = []notionapi.RichText{
-						{
-							Type: notionapi.ObjectTypeText,
-							Text: &notionapi.Text{Content: string(v.Title)},
+			case *mdast.Image:
+				blocks = append(blocks, func(_ []byte) nt.Block {
+					// Source is not used here :)
+					img := nt.Image{
+						Type: nt.FileTypeExternal,
+						External: &nt.FileObject{
+							URL: string(v.Destination),
 						},
 					}
-				}
+					if v.Title != nil { // here, v.Title is probably will always be empty, but anyway
+						img.Caption = []nt.RichText{
+							{
+								Type: nt.ObjectTypeText,
+								Text: &nt.Text{Content: string(v.Title)},
+							},
+						}
+					}
 
-				blocks = []notionapi.Block{&notionapi.ImageBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeImage,
-					},
-					Image: img,
-				}}
+					return &nt.ImageBlock{
+						BasicBlock: nt.BasicBlock{
+							Object: nt.ObjectTypeBlock,
+							Type:   nt.BlockTypeImage,
+						},
+						Image: img,
+					}
+				})
+
 			default:
 				panic(fmt.Sprintf("-> unhandled final node type: %s", node.Kind().String()))
 			}
@@ -170,237 +209,212 @@ func flattened(node ast.Node, source []byte) ([]notionapi.RichText, notionapi.Bl
 			// handle as image
 		}
 
-		return richTexts, blocks
+		return
 	}
 
 	// If has children: recursively iterate and flatten results
-	richTexts := make([]notionapi.RichText, 0)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 
 		// Flatten children of current child
-		flattenedRichTexts, grandChildren := flattened(child, source)
+		deeperRichTexts, deeperBlocks := flatten(child)
 
-		children = append(children, grandChildren...)
+		blocks = append(blocks, deeperBlocks...)
 
 		// Special handling depending on the type of the child
 		switch v := child.(type) {
-		case *astExt.Strikethrough:
-			for i := range flattenedRichTexts {
-				annotateStrikethrough(&flattenedRichTexts[i])
+		case *mdastx.Strikethrough:
+			for i := range deeperRichTexts {
+				deeperRichTexts[i].DecorateWith(strikethroughDecorator)
 			}
-		case *ast.Emphasis:
-			// Adding t.Annotations = code:true for each child
-			for i := range flattenedRichTexts {
+		case *mdast.Emphasis:
+			for i := range deeperRichTexts {
 				if v.Level == 1 {
-					annotateItalic(&flattenedRichTexts[i])
+					deeperRichTexts[i].DecorateWith(italicDecorator)
 				} else {
-					annotateBold(&flattenedRichTexts[i])
+					deeperRichTexts[i].DecorateWith(boldDecorator)
 				}
 			}
-		case *ast.CodeSpan:
+		case *mdast.CodeSpan:
 			// Adding t.Annotations = code:true for each child
-			for i := range flattenedRichTexts {
-				annotateCode(&flattenedRichTexts[i])
+			for i := range deeperRichTexts {
+				deeperRichTexts[i].DecorateWith(codeDecorator)
 			}
 
-		case *ast.Link:
-			for i := range flattenedRichTexts {
-				attachLink(&flattenedRichTexts[i], string(v.Destination))
+		case *mdast.Link:
+			for i := range deeperRichTexts {
+				deeperRichTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
 			}
 
-		case *ast.Image:
-			img := notionapi.Image{
-				Type: notionapi.FileTypeExternal,
-				External: &notionapi.FileObject{
-					URL: string(v.Destination),
-				},
-			}
-			if len(flattenedRichTexts) > 0 {
-				parts := make([]string, 0)
-				for _, frt := range flattenedRichTexts {
-					parts = append(parts, frt.Text.Content)
-				}
-				img.Caption = []notionapi.RichText{
-					{
-						Type: notionapi.ObjectTypeText,
-						Text: &notionapi.Text{Content: strings.Join(parts, " ")},
+		case *mdast.Image:
+			// make a copy of the rich texts inside, as they will become Image Caption
+			// but we nil-ify the original rich texts as to prevent them from duplicating
+			captionRichTexts := append(NtRichTextBuilders{}, deeperRichTexts...)
+			deeperRichTexts = nil
+			blocks = append(blocks, func(source []byte) nt.Block {
+				return &nt.ImageBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeImage,
+					},
+					Image: nt.Image{
+						Type: nt.FileTypeExternal,
+						External: &nt.FileObject{
+							URL: string(v.Destination),
+						},
+						// TODO(amberpixels): in case if image had a link parent, we need to do caption as link
+						Caption: captionRichTexts.Build(source),
 					},
 				}
-				flattenedRichTexts = nil
-				children = append(children, &notionapi.ImageBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeImage,
-					},
-					Image: img,
-				})
-			}
+			})
+
+		case *mdast.Text, *mdast.RawHTML, *mdast.AutoLink:
+		// we're fine here
 		default:
-			fmt.Println("Unhandled child's type: ", v.Kind().String())
+			slog.Warn(fmt.Sprintf("Unhandled child's type: %s", v.Kind().String()))
 		}
 
 		// Appending flattened children
-		richTexts = append(richTexts, flattenedRichTexts...)
+		richTexts = append(richTexts, deeperRichTexts...)
 	}
 
-	return richTexts, children
+	return richTexts, blocks
 }
 
-func (p *Parser) Walk(fn func(node ast.Node, entering bool) (ast.WalkStatus, error)) error {
-	return ast.Walk(p.parsed, fn)
-}
-
-func (p *Parser) ToNotionBlocks(node ast.Node) []notionapi.Block {
+func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 	switch node.Kind() {
-	case ast.KindHeading:
-		// Although in MD ast.Heading is respresented via deeply nested tree of objects
-		// In notion it should be a flattened list of RichTexts
+	case mdast.KindHeading:
+		// Although in MD mdast.Heading is respresented via deeply nested tree of objects
+		// In notion it should be a flattened list of RichTexts (With no children)
 		// Edge case: Notion's heading.collapseable=true (that supports children) is not supported yet
 		//            TODO(amberpixels): create an issue for it
+		richTexts, _ := flatten(node)
 
-		richTexts, _ := flattened(node, p.source)
+		slog.Debug(fmt.Sprintf("MD mdast.Heading flattened into %d nt-rich-texts", len(richTexts)))
 
-		slog.Debug(fmt.Sprintf("MD Heading flattened into %d", len(richTexts)))
-		for i, rt := range richTexts {
-			slog.Debug(fmt.Sprintf("Heading richtext[%d]: %s", i, rt.PlainText))
-		}
-
-		switch node.(*ast.Heading).Level {
+		switch node.(*mdast.Heading).Level {
 		case 1:
-			return []notionapi.Block{&notionapi.Heading1Block{BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeHeading1,
-			}, Heading1: notionapi.Heading{RichText: richTexts}}}
+			return []NtBlockBuilder{
+				func(source []byte) nt.Block {
+					return &nt.Heading1Block{BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeHeading1,
+					}, Heading1: nt.Heading{RichText: richTexts.Build(source)}}
+				},
+			}
 		case 2:
-			return []notionapi.Block{&notionapi.Heading2Block{BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeHeading2,
-			}, Heading2: notionapi.Heading{RichText: richTexts}}}
+			return []NtBlockBuilder{
+				func(source []byte) nt.Block {
+					return &nt.Heading2Block{BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeHeading2,
+					}, Heading2: nt.Heading{RichText: richTexts.Build(source)}}
+				},
+			}
 		default:
-			return []notionapi.Block{&notionapi.Heading3Block{BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeHeading3,
-			}, Heading3: notionapi.Heading{RichText: richTexts}}}
+			return []NtBlockBuilder{
+				func(source []byte) nt.Block {
+					return &nt.Heading3Block{BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeHeading3,
+					}, Heading3: nt.Heading{RichText: richTexts.Build(source)}}
+				},
+			}
 		}
-	case ast.KindParagraph:
-		richTexts, children := flattened(node, p.source)
+	case mdast.KindParagraph:
+		richTexts, blocks := flatten(node)
 
-		slog.Debug(fmt.Sprintf("MD Paragraph flattened into %d", len(richTexts)))
-		for i, rt := range richTexts {
-			slog.Debug(fmt.Sprintf("MD Pargraphrichtext[%d]: %s", i, rt.PlainText))
+		slog.Debug(fmt.Sprintf("MD mdast.Heading flattened into %d nt-rich-texts and %d nt-blocks", len(richTexts), len(blocks)))
+
+		if len(richTexts) == 0 && len(blocks) > 0 {
+			return blocks
 		}
 
-		if len(richTexts) == 0 && len(children) > 0 {
-			return children
+		return []NtBlockBuilder{
+			func(source []byte) nt.Block {
+				return &nt.ParagraphBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeParagraph,
+					},
+					Paragraph: nt.Paragraph{
+						RichText: richTexts.Build(source),
+						Children: blocks.Build(source), // TODO: NOT SURE IF THIS IS CORRECT
+					},
+				}
+			},
 		}
 
-		return []notionapi.Block{&notionapi.ParagraphBlock{
-			BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeParagraph,
+	case mdast.KindFencedCodeBlock:
+		richTexts, _ := flatten(node)
+		return []NtBlockBuilder{
+			func(source []byte) nt.Block {
+				codeBlock := node.(*mdast.FencedCodeBlock)
+				return &nt.CodeBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeCode,
+					},
+					Code: nt.Code{
+						Language: sanitizeBlockLanguage(string(codeBlock.Language(source))),
+						RichText: richTexts.Build(source),
+					},
+				}
 			},
-			Paragraph: notionapi.Paragraph{
-				RichText: richTexts,
-				Children: children, // TODO: NOT SURE IF THIS IS CORRECT
-			},
-		}}
+		}
 
-	case ast.KindFencedCodeBlock:
-		codeBlock := node.(*ast.FencedCodeBlock)
+	case mdast.KindHTMLBlock:
+		richTexts, _ := flatten(node)
 
-		richTexts, _ := flattened(node, p.source)
-
-		return []notionapi.Block{&notionapi.CodeBlock{
-			BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeCode,
+		return []NtBlockBuilder{
+			func(source []byte) nt.Block {
+				return &nt.ParagraphBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeParagraph,
+					},
+					Paragraph: nt.Paragraph{
+						RichText: richTexts.Build(source),
+					},
+				}
 			},
-			Code: notionapi.Code{
-				Language: sanitizeBlockLanguage(string(codeBlock.Language(p.source))),
-				RichText: richTexts,
-			},
-		}}
-	case ast.KindHTMLBlock:
-		richTexts, _ := flattened(node, p.source)
-
-		return []notionapi.Block{&notionapi.ParagraphBlock{
-			BasicBlock: notionapi.BasicBlock{
-				Object: notionapi.ObjectTypeBlock,
-				Type:   notionapi.BlockTypeParagraph,
-			},
-			Paragraph: notionapi.Paragraph{
-				RichText: richTexts,
-			},
-		}}
-	case ast.KindList:
-
-		list, _ := node.(*ast.List)
+		}
+	case mdast.KindList:
+		list, _ := node.(*mdast.List)
 		isBulletedList := list.Marker == '-' || list.Marker == '+'
 
-		result := make([]notionapi.Block, 0)
+		result := make(NtBlockBuilders, 0)
 		for mdItem := node.FirstChild(); mdItem != nil; mdItem = mdItem.NextSibling() {
-			flattenedRichTexts, _ := flattened(mdItem, p.source)
+			flattenedRichTexts, _ := flatten(mdItem)
 
 			if isBulletedList {
-				result = append(result, &notionapi.BulletedListItemBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeBulletedListItem,
-					},
-					BulletedListItem: notionapi.ListItem{
-						RichText: flattenedRichTexts,
-					},
+				result = append(result, func(source []byte) nt.Block {
+					return &nt.BulletedListItemBlock{
+						BasicBlock: nt.BasicBlock{
+							Object: nt.ObjectTypeBlock,
+							Type:   nt.BlockTypeBulletedListItem,
+						},
+						BulletedListItem: nt.ListItem{
+							RichText: flattenedRichTexts.Build(source),
+						},
+					}
 				})
 			} else {
-				result = append(result, &notionapi.NumberedListItemBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeNumberedListItem,
-					},
-					NumberedListItem: notionapi.ListItem{
-						RichText: flattenedRichTexts,
-					},
+				result = append(result, func(source []byte) nt.Block {
+					return &nt.NumberedListItemBlock{
+						BasicBlock: nt.BasicBlock{
+							Object: nt.ObjectTypeBlock,
+							Type:   nt.BlockTypeNumberedListItem,
+						},
+						NumberedListItem: nt.ListItem{
+							RichText: flattenedRichTexts.Build(source),
+						},
+					}
 				})
 			}
 		}
 		return result
+
 	default:
 		panic(fmt.Sprintf("unhandled node type: %s", node.Kind().String()))
 	}
 }
-
-/*
-	case *ast.Image:
-			title := "<no-title>"
-			if v.Title != nil {
-				title = string(v.Title)
-			}
-			dest := string(v.Destination)
-			return []notionapi.RichText{{
-				Text: &notionapi.Text{Content: fmt.Sprintf("image%s_%s", title, dest)},
-			}}, nil
-
-
-
-		case *ast.Link:
-			// For now let's support only links containing simple things, e.g. text
-			contentParts := make([]string, 0)
-			for _, content := range richChildren {
-				contentParts = append(contentParts, content.Text.Content)
-			}
-			contentStr := strings.Join(contentParts, " ")
-			fmt.Println("LINK : ", string(v.Destination))
-			link := string(v.Destination)
-			if link == "" || strings.HasPrefix(link, "#") {
-				link = "https://localhost" + link
-			}
-
-			richTexts = append(richTexts, notionapi.RichText{
-				Text: &notionapi.Text{
-					Link: &notionapi.Link{
-						Url: link,
-					},
-					Content: contentStr,
-				},
-			})
-*/

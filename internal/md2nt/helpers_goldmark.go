@@ -3,13 +3,13 @@ package md2nt
 import (
 	"bytes"
 
-	"github.com/yuin/goldmark/text"
+	mdtext "github.com/yuin/goldmark/text"
 )
 
 // contentFromLines returns the content of a node that is a lines holder
 // each line is concatenated into a single byte slice
 func contentFromLines(v interface {
-	Lines() *text.Segments
+	Lines() *mdtext.Segments
 }, source []byte) []byte {
 	lines := v.Lines()
 	content := make([]byte, 0)
@@ -23,7 +23,7 @@ func contentFromLines(v interface {
 	return content
 }
 
-func contentFromSegments(segments *text.Segments, source []byte) []byte {
+func contentFromSegments(segments *mdtext.Segments, source []byte) []byte {
 	content := make([]byte, 0)
 	for i := 0; i < segments.Len(); i++ {
 		s := segments.At(i)
