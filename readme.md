@@ -1,7 +1,7 @@
 # peppers 🌶️
 
-**peppers** is a CLI tool designed to transform Markdown documentation into Notion pages.
-If you're a developer managing multiple repositories, **peppers** aims to keep your README.md files as 
+**pprs** is a CLI tool designed to transform Markdown documentation into Notion pages.
+If you're a developer managing multiple repositories, **pprs** aims to keep your README.md files as 
 the single source of truth while making them easily searchable and viewable in Notion. 
 This tool is ideal for automating the documentation process in CI setups, ensuring your project documentation stays up to date.
 

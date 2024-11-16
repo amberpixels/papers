@@ -7,3 +7,5 @@ require (
 	github.com/jomei/notionapi v1.13.2
 	github.com/yuin/goldmark v1.7.8
 )
+
+require github.com/alecthomas/kong v1.4.0 // indirect
