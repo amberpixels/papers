@@ -22,6 +22,7 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
     - Inline code
     - Links and autolinks
     - Blockquotes
+    - Horizontal rules (semantic breaks)
     - Basic images (`![]()` syntax)
     - Basic tables (not well tested with nested things inside)
     - Limited HTML support (`<br>` only)
@@ -33,7 +34,6 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 
 - **Markdown Syntax Not Yet Supported:**
     - Advanced tables (tables + things inside)
-    - Horizontal rules
     - Footnotes
     - Definition lists
     - Task lists

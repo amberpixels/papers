@@ -413,6 +413,18 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 			}
 		}
 		return result
+	case mdast.KindThematicBreak:
+		// Create a Notion Divider Block
+		return []NtBlockBuilder{
+			func(_ []byte) nt.Block {
+				return &nt.DividerBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeDivider,
+					},
+				}
+			},
+		}
 	case mdast.KindBlockquote:
 		richTexts, blocks := flatten(node)
 
