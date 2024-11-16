@@ -26,9 +26,16 @@ tidy:
 	@go fmt $$(go list ./...)
 	@go vet $$(go list ./...)
 
+# Install golangci-lint only if it's not already installed
+lint-install:
+	@if ! [ -x "$(GOLANGCI_LINT)" ]; then \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	fi
 
-lint:
-	$(GOLANGCI_LINT) run
+# Lint the code using golangci-lint
+# todo reuse var if possible
+lint: lint-install
+	$(shell which golangci-lint) run
 
 # Install the binary globally with aliases
 install:
@@ -41,4 +48,4 @@ uninstall:
 	rm -f $(INSTALL_DIR)/$(ALIAS_NAME)
 
 # Phony targets
-.PHONY: all build run tidy
+.PHONY: all build run tidy lint-install lint install uninstall
