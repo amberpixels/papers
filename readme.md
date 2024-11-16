@@ -21,6 +21,7 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
     - Code blocks
     - Inline code
     - Links and autolinks
+    - Blockquotes
     - Basic images (`![]()` syntax)
     - Basic tables (not well tested with nested things inside)
     - Limited HTML support (`<br>` only)
@@ -32,7 +33,6 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 
 - **Markdown Syntax Not Yet Supported:**
     - Advanced tables (tables + things inside)
-    - Blockquotes
     - Horizontal rules
     - Footnotes
     - Definition lists
@@ -46,7 +46,7 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 
 - [x] Add support for tables
   - [ ] Add support for nested things inside tables
-- [ ] Add support for blockquotes
+- [x] Add support for blockquotes
 - [ ] Add horizontal rules
 - [ ] Handle footnotes and definition lists
 - [ ] Implement task lists and nested lists

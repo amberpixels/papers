@@ -413,6 +413,23 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 			}
 		}
 		return result
+	case mdast.KindBlockquote:
+		richTexts, blocks := flatten(node)
+
+		return []NtBlockBuilder{
+			func(source []byte) nt.Block {
+				return &nt.QuoteBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockQuote,
+					},
+					Quote: nt.Quote{
+						RichText: richTexts.Build(source),
+						Children: blocks.Build(source),
+					},
+				}
+			},
+		}
 	case mdastx.KindTable: // Use the extension AST for the Table node
 		table := node.(*mdastx.Table) // nolint:errcheck
 
