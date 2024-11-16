@@ -1,0 +1,61 @@
+run:
+  timeout: 30s
+
+linters-settings:
+  govet:
+    enable-all: true
+  errcheck:
+    # Report all unchecked errors
+    check-type-assertions: true
+    check-blank: true
+  staticcheck:
+    checks:
+      # Use a common set of staticcheck checks
+      - SA*
+      - ST*
+      - S1000
+      - S1001
+  gocyclo:
+    min-complexity: 15  # Set a minimum complexity threshold
+  depguard:
+    rules:
+      prevent_redundant_packages:
+        list-mode: lax # allow unless explicitely denied
+        files:
+          - $all
+          - "!$test"
+        allow:
+          - $gostd
+        deny:
+          - pkg: github.com/pkg/errors
+            desc: "Avoid using pkg/errors; use standard library errors instead."
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - gocyclo
+    - depguard
+    - ineffassign
+    - unused
+    - typecheck
+    - unconvert
+    - misspell
+    - gofmt
+    - gosec
+    - dupl
+
+# Enable fast linters (these run quickly and catch common issues)
+fast: true
+
+# Configure issues output
+#issues:
+
+
+# Configure the output format
+output:
+  color: always
+  formats: colored-line-number
+  sort: path

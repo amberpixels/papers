@@ -1,4 +1,4 @@
-// Package jalapeno is a library that provides Markdown -> Notion convertion
+// Package jalapeno is a library that provides Markdown -> Notion conversion
 package jalapeno
 
 import (
@@ -49,7 +49,7 @@ func (p *Parser) ParsePage(source []byte) (nt.Blocks, nt.Properties, error) {
 	if len(blocks) > 0 {
 		for i, block := range blocks {
 			if block.GetType() == nt.BlockTypeHeading1 {
-				pageTitle = block.(*nt.Heading1Block).Heading1.RichText
+				pageTitle = block.(*nt.Heading1Block).Heading1.RichText // nolint:errcheck
 				// delete this block
 				blocks = append(blocks[:i], blocks[i+1:]...)
 				break
@@ -158,6 +158,8 @@ func ToRichText(node mdast.Node) (*NtRichTextBuilder, error) {
 //
 // TODO(amberpixels): consider refactoring as this function should be split into two: on for rich text and one for block
 //   - this can be achieved if we have a knowledge on how each mdast.Node should be converted.
+//
+// nolint: gocyclo // Will be OK after refactor
 func flatten(node mdast.Node) (richTexts NtRichTextBuilders, blocks NtBlockBuilders) {
 	richTexts = make(NtRichTextBuilders, 0)
 	blocks = make(NtBlockBuilders, 0)
@@ -291,7 +293,7 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 
 		slog.Debug(fmt.Sprintf("MD mdast.Heading flattened into %d nt-rich-texts", len(richTexts)))
 
-		switch node.(*mdast.Heading).Level {
+		switch node.(*mdast.Heading).Level { // nolint:errcheck
 		case 1:
 			return []NtBlockBuilder{
 				func(source []byte) nt.Block {
@@ -348,7 +350,7 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 		richTexts, _ := flatten(node)
 		return []NtBlockBuilder{
 			func(source []byte) nt.Block {
-				codeBlock := node.(*mdast.FencedCodeBlock)
+				codeBlock := node.(*mdast.FencedCodeBlock) // nolint:errcheck
 				return &nt.CodeBlock{
 					BasicBlock: nt.BasicBlock{
 						Object: nt.ObjectTypeBlock,
@@ -379,7 +381,7 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 			},
 		}
 	case mdast.KindList:
-		list, _ := node.(*mdast.List)
+		list := node.(*mdast.List) // // nolint:errcheck
 		isBulletedList := list.Marker == '-' || list.Marker == '+'
 
 		result := make(NtBlockBuilders, 0)

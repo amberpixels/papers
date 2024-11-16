@@ -1,4 +1,6 @@
 # Variables
+GOLANGCI_LINT := $(shell which golangci-lint)
+
 BUILD_DIR := build
 CMD_DIR = ./cmd/pprs
 MAIN_FILE := $(CMD_DIR)/main.go
@@ -24,6 +26,9 @@ tidy:
 	@go fmt $$(go list ./...)
 	@go vet $$(go list ./...)
 
+
+lint:
+	$(GOLANGCI_LINT) run
 
 # Install the binary globally with aliases
 install:
