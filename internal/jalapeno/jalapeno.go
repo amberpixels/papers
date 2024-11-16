@@ -345,7 +345,6 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 				}
 			},
 		}
-
 	case mdast.KindFencedCodeBlock:
 		richTexts, _ := flatten(node)
 		return []NtBlockBuilder{
@@ -363,7 +362,6 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 				}
 			},
 		}
-
 	case mdast.KindHTMLBlock:
 		richTexts, _ := flatten(node)
 
@@ -415,7 +413,89 @@ func MdNode2NtBlocks(node mdast.Node) NtBlockBuilders {
 			}
 		}
 		return result
+	case mdastx.KindTable: // Use the extension AST for the Table node
+		table := node.(*mdastx.Table) // nolint:errcheck
 
+		// Collect headers and rows
+		headers := make([]NtRichTextBuilders, 0)
+		rows := make([][]NtRichTextBuilders, 0)
+
+		// Iterate over the table's children to extract headers and rows
+		for tr := table.FirstChild(); tr != nil; tr = tr.NextSibling() {
+			switch tr.Kind() {
+			case mdastx.KindTableHeader:
+				// Collect headers
+				for th := tr.FirstChild(); th != nil; th = th.NextSibling() {
+					richTexts, _ := flatten(th)
+					headers = append(headers, richTexts)
+				}
+
+			case mdastx.KindTableRow:
+				// Collect each row's cells
+				row := make([]NtRichTextBuilders, 0)
+				for td := tr.FirstChild(); td != nil; td = td.NextSibling() {
+					richTexts, _ := flatten(td)
+					row = append(row, richTexts)
+				}
+				rows = append(rows, row)
+			}
+		}
+
+		// Create Notion table block
+		return []NtBlockBuilder{
+			func(source []byte) nt.Block {
+				// Construct table block
+				tableBlock := &nt.TableBlock{
+					BasicBlock: nt.BasicBlock{
+						Object: nt.ObjectTypeBlock,
+						Type:   nt.BlockTypeTableBlock,
+					},
+					Table: nt.Table{
+						TableWidth:      len(headers),
+						HasColumnHeader: true,
+						Children:        nt.Blocks{}, // will be populated below
+
+						//HasRowHeader:  false, // TODO(amberpixels) is this possible to be known from markdown?
+					},
+				}
+
+				// Populate header row
+				if len(headers) > 0 {
+					headerRow := nt.TableRow{
+						Cells: make([][]nt.RichText, len(headers)),
+					}
+					for i, header := range headers {
+						headerRow.Cells[i] = header.Build(source)
+					}
+					tableBlock.Table.Children = append(tableBlock.Table.Children, &nt.TableRowBlock{
+						BasicBlock: nt.BasicBlock{
+							Object: nt.ObjectTypeBlock,
+							Type:   nt.BlockTypeTableRowBlock,
+						},
+						TableRow: headerRow,
+					})
+				}
+
+				// Populate the rest of the rows
+				for _, row := range rows {
+					tableRow := nt.TableRow{
+						Cells: make([][]nt.RichText, len(row)),
+					}
+					for i, cell := range row {
+						tableRow.Cells[i] = cell.Build(source)
+					}
+					tableBlock.Table.Children = append(tableBlock.Table.Children, &nt.TableRowBlock{
+						BasicBlock: nt.BasicBlock{
+							Object: nt.ObjectTypeBlock,
+							Type:   nt.BlockTypeTableRowBlock,
+						},
+						TableRow: tableRow,
+					})
+				}
+
+				return tableBlock
+			},
+		}
 	default:
 		panic(fmt.Sprintf("unhandled node type: %s", node.Kind().String()))
 	}

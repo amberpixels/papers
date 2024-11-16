@@ -53,7 +53,10 @@ func main() {
 	fmt.Printf("Converting Markdown File [%s] into Notion [%s]\n", in.FileName, in.NotionParentID)
 
 	p := jalapeno.NewParser(goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithExtensions(
+			extension.GFM,
+			extension.Table,
+		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),

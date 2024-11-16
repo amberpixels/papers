@@ -22,6 +22,7 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
     - Inline code
     - Links and autolinks
     - Basic images (`![]()` syntax)
+    - Basic tables (not well tested with nested things inside)
     - Limited HTML support (`<br>` only)
 
 - **Notion Page Creation:**
@@ -30,7 +31,7 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 ## Limitations (Work in Progress)
 
 - **Markdown Syntax Not Yet Supported:**
-    - Tables
+    - Advanced tables (tables + things inside)
     - Blockquotes
     - Horizontal rules
     - Footnotes
@@ -43,7 +44,8 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 
 ## Roadmap
 
-- [ ] Add support for tables
+- [x] Add support for tables
+  - [ ] Add support for nested things inside tables
 - [ ] Add support for blockquotes
 - [ ] Add horizontal rules
 - [ ] Handle footnotes and definition lists
