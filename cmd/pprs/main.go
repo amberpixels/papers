@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -56,18 +57,83 @@ func main() {
 		goldmark.WithExtensions(
 			extension.GFM,
 			extension.Table,
+			extension.TaskList,
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
 	))
 
+	jalapeno.SetDebugSource(source)
 	blocks, props, err := p.ParsePage(source)
 	if err != nil {
 		ExitWithError("Couldn't parse the given file", err)
 	}
 
+	_ = blocks
 	slog.Debug("Using Notion API with the given token: " + in.NotionAPIToken)
+
+	blocks2 := notionapi.Blocks{}
+	blocks2 = append(blocks2, &notionapi.BulletedListItemBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Object: notionapi.ObjectTypeBlock,
+			Type:   notionapi.BlockTypeBulletedListItem,
+		},
+		BulletedListItem: notionapi.ListItem{
+			RichText: []notionapi.RichText{
+				{
+					Type: notionapi.ObjectTypeText,
+					Text: &notionapi.Text{Content: "A"},
+				},
+			},
+			Children: notionapi.Blocks{
+				&notionapi.ToDoBlock{
+					BasicBlock: notionapi.BasicBlock{
+						Object: notionapi.ObjectTypeBlock,
+						Type:   notionapi.BlockTypeToDo,
+					},
+					ToDo: notionapi.ToDo{
+						Checked: true,
+						RichText: []notionapi.RichText{
+							{
+								Type: notionapi.ObjectTypeText,
+								Text: &notionapi.Text{Content: "A1"},
+							},
+						},
+					},
+				},
+				&notionapi.ToDoBlock{
+					BasicBlock: notionapi.BasicBlock{
+						Object: notionapi.ObjectTypeBlock,
+						Type:   notionapi.BlockTypeToDo,
+					},
+					ToDo: notionapi.ToDo{
+						Checked: false,
+						RichText: []notionapi.RichText{
+							{
+								Type: notionapi.ObjectTypeText,
+								Text: &notionapi.Text{Content: "A2"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	blocks2 = append(blocks2, &notionapi.BulletedListItemBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Object: notionapi.ObjectTypeBlock,
+			Type:   notionapi.BlockTypeBulletedListItem,
+		},
+		BulletedListItem: notionapi.ListItem{
+			RichText: []notionapi.RichText{
+				{
+					Type: notionapi.ObjectTypeText,
+					Text: &notionapi.Text{Content: "B"},
+				},
+			},
+		},
+	})
 
 	pageReq := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
@@ -75,8 +141,11 @@ func main() {
 			PageID: notionapi.PageID(in.NotionParentID),
 		},
 		Properties: props,
-		Children:   blocks,
+		Children:   blocks2,
 	}
+
+	jj, _ := json.Marshal(pageReq)
+	fmt.Println(string(jj))
 
 	client := notionapi.NewClient(notionapi.Token(in.NotionAPIToken))
 
