@@ -141,8 +141,9 @@ func main() {
 			PageID: notionapi.PageID(in.NotionParentID),
 		},
 		Properties: props,
-		Children:   blocks2,
+		Children:   blocks,
 	}
+	_ = blocks2
 
 	jj, _ := json.Marshal(pageReq)
 	fmt.Println(string(jj))
