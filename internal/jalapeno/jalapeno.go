@@ -351,10 +351,10 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	// Pure flattening first:
 	switch node.Kind() {
 	case mdast.KindHeading:
-		// Although in MD mdast.Heading is respresented via deeply nested tree of objects
-		// In notion it should be a flattened list of RichTexts (With no children)
+		// Although in MD mdast.Heading can have children,
+		// In notion it's a flattened list of RichTexts
 		// Edge case: Notion's heading.collapseable=true (that supports children) is not supported yet
-		//            TODO(amberpixels): create an issue for it
+		//            TODO(amberpixels): support collapsable headings with children
 		richTexts := flattenRichTexts(node)
 
 		DebugRichTexts(richTexts, "Heading")
