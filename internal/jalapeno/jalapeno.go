@@ -364,75 +364,35 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 
 		DebugRichTexts(richTexts, "Heading")
 
-		switch node.(*mdast.Heading).Level { // nolint:errcheck
-		case 1:
-			return NtBlockBuilders{
-				NewNtBlockBuilder(func(source []byte) nt.Block {
-					return &nt.Heading1Block{BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeHeading1,
-					}, Heading1: nt.Heading{RichText: richTexts.Build(source)}}
-				}),
-			}
-		case 2:
-			return NtBlockBuilders{
-				NewNtBlockBuilder(func(source []byte) nt.Block {
-					return &nt.Heading2Block{BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeHeading2,
-					}, Heading2: nt.Heading{RichText: richTexts.Build(source)}}
-				}),
-			}
-		default:
-			return NtBlockBuilders{
-				NewNtBlockBuilder(func(source []byte) nt.Block {
-					return &nt.Heading3Block{BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeHeading3,
-					}, Heading3: nt.Heading{RichText: richTexts.Build(source)}}
-				}),
-			}
-		}
+		return NtBlockBuilders{NewNtBlockBuilder(func(source []byte) nt.Block {
+			return nt.NewHeadingBlock(
+				nt.Heading{RichText: richTexts.Build(source)},
+				node.(*mdast.Heading).Level, // nolint:errcheck
+			)
+		})}
 	case mdast.KindFencedCodeBlock:
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
 				codeBlock := node.(*mdast.FencedCodeBlock) // nolint:errcheck
-				return &nt.CodeBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeCode,
-					},
-					Code: nt.Code{
-						Language: sanitizeBlockLanguage(string(codeBlock.Language(source))),
-						RichText: flattenRichTexts(node).Build(source),
-					},
-				}
+				return nt.NewCodeBlock(nt.Code{
+					Language: sanitizeBlockLanguage(string(codeBlock.Language(source))),
+					RichText: flattenRichTexts(node).Build(source),
+				})
 			}),
 		}
 	case mdast.KindHTMLBlock:
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return &nt.ParagraphBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeParagraph,
-					},
-					Paragraph: nt.Paragraph{
-						RichText: flattenRichTexts(node).Build(source),
-					},
-				}
+				return nt.NewParagraphBlock(nt.Paragraph{
+					RichText: flattenRichTexts(node).Build(source),
+				})
 			}),
 		}
 	case mdast.KindThematicBreak:
 		// Create a Notion Divider Block
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(_ []byte) nt.Block {
-				return &nt.DividerBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeDivider,
-					},
-				}
+				return nt.NewDividerBlock()
 			}),
 		}
 	case mdast.KindImage:
@@ -443,19 +403,13 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 		// TODO caption??
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return &nt.ImageBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeImage,
+				return nt.NewImageBlock(nt.Image{
+					Type: nt.FileTypeExternal,
+					External: &nt.FileObject{
+						URL: string(node.(*mdast.Image).Destination), // nolint:errcheck
 					},
-					Image: nt.Image{
-						Type: nt.FileTypeExternal,
-						External: &nt.FileObject{
-							URL: string(node.(*mdast.Image).Destination),
-						},
-						//Caption: captionRichTexts.Build(source),
-					},
-				}
+					//Caption: captionRichTexts.Build(source),
+				})
 			}),
 		}
 	case mdastx.KindTable: // Use the extension AST for the Table node
@@ -491,19 +445,13 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
 				// Construct table block
-				tableBlock := &nt.TableBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeTableBlock,
-					},
-					Table: nt.Table{
-						TableWidth:      len(headers),
-						HasColumnHeader: true,
-						Children:        nt.Blocks{}, // will be populated below
+				tableBlock := nt.NewTableBlock(nt.Table{
+					TableWidth:      len(headers),
+					HasColumnHeader: true,
+					Children:        nt.Blocks{}, // will be populated below
 
-						//HasRowHeader:  false, // TODO(amberpixels) is this possible to be known from markdown?
-					},
-				}
+					//HasRowHeader:  false, // TODO(amberpixels) is this possible to be known from markdown?
+				})
 
 				// Populate header row
 				if len(headers) > 0 {
@@ -513,13 +461,8 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 					for i, header := range headers {
 						headerRow.Cells[i] = header.Build(source)
 					}
-					tableBlock.Table.Children = append(tableBlock.Table.Children, &nt.TableRowBlock{
-						BasicBlock: nt.BasicBlock{
-							Object: nt.ObjectTypeBlock,
-							Type:   nt.BlockTypeTableRowBlock,
-						},
-						TableRow: headerRow,
-					})
+
+					tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(headerRow))
 				}
 
 				// Populate the rest of the rows
@@ -530,13 +473,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 					for i, cell := range row {
 						tableRow.Cells[i] = cell.Build(source)
 					}
-					tableBlock.Table.Children = append(tableBlock.Table.Children, &nt.TableRowBlock{
-						BasicBlock: nt.BasicBlock{
-							Object: nt.ObjectTypeBlock,
-							Type:   nt.BlockTypeTableRowBlock,
-						},
-						TableRow: tableRow,
-					})
+					tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(tableRow))
 				}
 
 				return tableBlock
@@ -562,16 +499,10 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 		}
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return &nt.ParagraphBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeParagraph,
-					},
-					Paragraph: nt.Paragraph{
-						RichText: innerTexts.Build(source),
-						Children: innerBlocks.Build(source),
-					},
-				}
+				return nt.NewParagraphBlock(nt.Paragraph{
+					RichText: innerTexts.Build(source),
+					Children: innerBlocks.Build(source),
+				})
 			}),
 		}
 	case mdast.KindList:
@@ -582,16 +513,10 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return &nt.QuoteBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeQuote,
-					},
-					Quote: nt.Quote{
-						RichText: richTexts.Build(source),
-						Children: blocks.Build(source),
-					},
-				}
+				return nt.NewQuoteBlock(nt.Quote{
+					RichText: richTexts.Build(source),
+					Children: blocks.Build(source),
+				})
 			}),
 		}
 	}
@@ -655,26 +580,15 @@ func handleListItem(node mdast.Node, bulletted bool) *NtBlockBuilder {
 	}
 
 	return NewNtBlockBuilder(func(source []byte) nt.Block {
-		bb := nt.BasicBlock{
-			Object: nt.ObjectTypeBlock,
-		}
 		li := nt.ListItem{
 			RichText: mainContent.Build(source),
 			Children: children.Build(source),
 		}
 
 		if bulletted {
-			bb.Type = nt.BlockTypeBulletedListItem
-			return &nt.BulletedListItemBlock{
-				BasicBlock:       bb,
-				BulletedListItem: li,
-			}
+			return nt.NewBulletedListItemBlock(li)
 		} else {
-			bb.Type = nt.BlockTypeNumberedListItem
-			return &nt.NumberedListItemBlock{
-				BasicBlock:       bb,
-				NumberedListItem: li,
-			}
+			return nt.NewNumberedListItemBlock(li)
 		}
 	})
 }
@@ -699,16 +613,10 @@ func handleTaskItem(node mdast.Node) *NtBlockBuilder {
 	}
 
 	return NewNtBlockBuilder(func(source []byte) nt.Block {
-		return &nt.ToDoBlock{
-			BasicBlock: nt.BasicBlock{
-				Object: nt.ObjectTypeBlock,
-				Type:   nt.BlockTypeToDo,
-			},
-			ToDo: nt.ToDo{
-				Checked:  checkbox.IsChecked,
-				RichText: labels.Build(source),
-			},
-		}
+		return nt.NewToDoBlock(nt.ToDo{
+			Checked:  checkbox.IsChecked,
+			RichText: labels.Build(source),
+		})
 	})
 }
 
