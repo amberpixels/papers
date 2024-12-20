@@ -10,4 +10,4 @@ require (
 )
 
 // Switching to custom fork for now
-replace github.com/jomei/notionapi => github.com/amberpixels/notionapi v0.0.0-20241220173643-0959979f201d
+replace github.com/jomei/notionapi => github.com/amberpixels/notionapi v0.0.0-20241220211835-9cbb5232d733
