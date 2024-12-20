@@ -70,70 +70,7 @@ func main() {
 		ExitWithError("Couldn't parse the given file", err)
 	}
 
-	_ = blocks
 	slog.Debug("Using Notion API with the given token: " + in.NotionAPIToken)
-
-	blocks2 := notionapi.Blocks{}
-	blocks2 = append(blocks2, &notionapi.BulletedListItemBlock{
-		BasicBlock: notionapi.BasicBlock{
-			Object: notionapi.ObjectTypeBlock,
-			Type:   notionapi.BlockTypeBulletedListItem,
-		},
-		BulletedListItem: notionapi.ListItem{
-			RichText: []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: "A"},
-				},
-			},
-			Children: notionapi.Blocks{
-				&notionapi.ToDoBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeToDo,
-					},
-					ToDo: notionapi.ToDo{
-						Checked: true,
-						RichText: []notionapi.RichText{
-							{
-								Type: notionapi.ObjectTypeText,
-								Text: &notionapi.Text{Content: "A1"},
-							},
-						},
-					},
-				},
-				&notionapi.ToDoBlock{
-					BasicBlock: notionapi.BasicBlock{
-						Object: notionapi.ObjectTypeBlock,
-						Type:   notionapi.BlockTypeToDo,
-					},
-					ToDo: notionapi.ToDo{
-						Checked: false,
-						RichText: []notionapi.RichText{
-							{
-								Type: notionapi.ObjectTypeText,
-								Text: &notionapi.Text{Content: "A2"},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	blocks2 = append(blocks2, &notionapi.BulletedListItemBlock{
-		BasicBlock: notionapi.BasicBlock{
-			Object: notionapi.ObjectTypeBlock,
-			Type:   notionapi.BlockTypeBulletedListItem,
-		},
-		BulletedListItem: notionapi.ListItem{
-			RichText: []notionapi.RichText{
-				{
-					Type: notionapi.ObjectTypeText,
-					Text: &notionapi.Text{Content: "B"},
-				},
-			},
-		},
-	})
 
 	pageReq := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
@@ -143,9 +80,10 @@ func main() {
 		Properties: props,
 		Children:   blocks,
 	}
-	_ = blocks2
+	_ = blocks
 
-	jj, _ := json.Marshal(pageReq)
+	// TEMPORARY for debugging. TODO: remove when done
+	jj, _ := json.Marshal(pageReq) //nolint:errcheck
 	fmt.Println(string(jj))
 
 	client := notionapi.NewClient(notionapi.Token(in.NotionAPIToken))

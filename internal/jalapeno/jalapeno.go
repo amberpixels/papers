@@ -85,9 +85,14 @@ func IsConvertableToBlock(node mdast.Node) bool {
 // IsConvertableToRichText returns true if given Markdown AST node is convertable directly into notion RichText
 func IsConvertableToRichText(node mdast.Node) bool {
 	switch node.(type) {
-	case *mdast.Heading, *mdast.Text, *mdast.TextBlock,
+	case *mdast.Heading, *mdast.Text,
 		*mdast.FencedCodeBlock, *mdast.ListItem, *mdast.AutoLink,
-		*mdast.RawHTML, *mdast.HTMLBlock:
+		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph:
+		return true
+	case *mdast.TextBlock:
+		if node.FirstChild() != nil && node.FirstChild().Kind() == mdastx.KindTaskCheckBox {
+			return false
+		}
 		return true
 	default:
 		return false
@@ -245,7 +250,7 @@ func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, bl
 		switch v := child.(type) {
 		case *mdast.Image:
 			/*
-						// make a copy of the rich texts inside, as they will become Image Caption
+				// make a copy of the rich texts inside, as they will become Image Caption
 				// but we nil-ify the original rich texts as to prevent them from duplicating
 				captionRichTexts := append(NtRichTextBuilders{}, deeperRichTexts...)
 				deeperRichTexts = nil
@@ -453,33 +458,6 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 				}
 			}),
 		}
-
-	case /* ??? */ mdastx.KindTaskCheckBox:
-		// [ x ] Some text
-		//   ^---  ---------child
-		//       ^---- next
-		// So we need to create a block for checkbox with RichTexts taken from the rest of the siblings:
-		labels := make(NtRichTextBuilders, 0)
-		for next := node.NextSibling(); next != nil; next = next.NextSibling() {
-			siblingTexts := flattenRichTexts(next)
-			labels = append(labels, siblingTexts...)
-		}
-		block := NewNtBlockBuilder(func(source []byte) nt.Block {
-			return &nt.ToDoBlock{
-				BasicBlock: nt.BasicBlock{
-					Object: nt.ObjectTypeBlock,
-					Type:   nt.BlockTypeToDo,
-				},
-				ToDo: nt.ToDo{
-					Checked:  node.(*mdastx.TaskCheckBox).IsChecked,
-					RichText: labels.Build(source),
-				},
-			}
-		})
-
-		DebugBlock(block, "TODO Task")
-
-		return NtBlockBuilders{block}
 	case mdastx.KindTable: // Use the extension AST for the Table node
 		table := node.(*mdastx.Table) // nolint:errcheck
 
@@ -597,12 +575,8 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 			}),
 		}
 	case mdast.KindList:
-		list := node.(*mdast.List)
-		return handleList(list)
-	case mdast.KindListItem:
-		return handleListItem(node)
+		return handleList(node)
 	case mdast.KindTextBlock:
-
 	case mdast.KindBlockquote:
 		richTexts, blocks := flatten(node)
 
@@ -626,199 +600,99 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 }
 
 // handleList processes a markdown list and returns appropriate Notion blocks
-func handleList(list *mdast.List) NtBlockBuilders {
-	blocks := make(NtBlockBuilders, 0)
-
-	// Group task items together
-	var taskItems NtBlockBuilders
-	var currentListItem *NtBlockBuilder
-
-	for child := list.FirstChild(); child != nil; child = child.NextSibling() {
-		// Each child is a ListItem
-		if list.Marker == '-' || list.Marker == '+' || list.Marker == '*' {
-			// For bulleted lists, check if this item contains task items
-			hasTaskItems := false
-			for textBlock := child.FirstChild(); textBlock != nil; textBlock = textBlock.NextSibling() {
-				if textBlock.Kind() == mdast.KindTextBlock {
-					for grandChild := textBlock.FirstChild(); grandChild != nil; grandChild = grandChild.NextSibling() {
-						if grandChild.Kind() == mdastx.KindTaskCheckBox {
-							hasTaskItems = true
-							taskItems = append(taskItems, createTodoItem(grandChild))
-						}
-					}
-				}
-			}
-
-			if hasTaskItems {
-				// If this is a new list item with task items, add the previous one if it exists
-				if currentListItem != nil {
-					blocks = append(blocks, currentListItem)
-				}
-				// Create new list item with the collected task items as children
-				currentListItem = createBulletedListItemWithChildren(child, taskItems)
-				taskItems = make(NtBlockBuilders, 0) // Reset for next group
-			} else {
-				// Regular bulleted list item
-				if currentListItem != nil {
-					blocks = append(blocks, currentListItem)
-					currentListItem = nil
-				}
-				blocks = append(blocks, createBulletedListItem(child))
-			}
-		} else {
-			// Numbered list items (same logic as above)
-			blocks = append(blocks, createNumberedListItem(child))
-		}
+func handleList(node mdast.Node) NtBlockBuilders {
+	list, ok := node.(*mdast.List)
+	if !ok {
+		return nil
 	}
 
-	// Don't forget to add the last list item if it exists
-	if currentListItem != nil {
-		blocks = append(blocks, currentListItem)
+	// Check if list is bulleted or numbered
+	var bulletted bool
+	if list.Marker == '-' || list.Marker == '+' || list.Marker == '*' {
+		bulletted = true
+	}
+
+	blocks := make(NtBlockBuilders, 0)
+	for child := list.FirstChild(); child != nil; child = child.NextSibling() {
+		blocks = append(blocks, handleListItem(child, bulletted))
 	}
 
 	return blocks
 }
 
-// Helper function to create a list item with predefined children
-func createBulletedListItemWithChildren(node mdast.Node, children NtBlockBuilders) *NtBlockBuilder {
-	mainContent := extractMainContent(node)
-
-	return NewNtBlockBuilder(func(source []byte) nt.Block {
-		return &nt.BulletedListItemBlock{
-			BasicBlock: nt.BasicBlock{
-				Object: nt.ObjectTypeBlock,
-				Type:   nt.BlockTypeBulletedListItem,
-			},
-			BulletedListItem: nt.ListItem{
-				RichText: mainContent.Build(source),
-				Children: children.Build(source),
-			},
-		}
-	})
-}
-
-// handleListItem processes a single list item and its children
-func handleListItem(node mdast.Node) NtBlockBuilders {
-	// First, get the text content of this item (before any nested lists)
-	mainContent := extractMainContent(node)
-
-	// Then, handle any nested content (including nested lists)
-	var children NtBlockBuilders
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		switch child.Kind() {
-		case mdast.KindList:
-			// Recursive handling of nested lists
-			children = append(children, handleList(child.(*mdast.List))...)
-		case mdastx.KindTaskCheckBox:
-			// Handle checkboxes
-			children = append(children, createTodoItem(child))
-			// ... handle other types of nested content
+// handleListItem handles MD's list item and its children
+// List Item on markdown can have children. For notion - first child is usually a RichText
+// Other children are built as nested blocks
+// Exception is TaskItem. On Notion it's not a ListItem at all. It's just a ToDoBlock
+func handleListItem(node mdast.Node, bulletted bool) *NtBlockBuilder {
+	// Extract RichText (from first child)
+	mainContent := make(NtRichTextBuilders, 0)
+	if child := node.FirstChild(); child != nil {
+		// If we get here, it's safe to convert to rich text
+		if IsConvertableToRichText(child) {
+			mainContent = append(mainContent, flattenRichTexts(child)...)
 		}
 	}
 
-	// Create the appropriate block type
-	return NtBlockBuilders{
-		NewNtBlockBuilder(func(source []byte) nt.Block {
+	var children NtBlockBuilders
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if len(mainContent) > 0 && child.PreviousSibling() == nil { // skip main content
+			continue
+		}
+
+		switch child.Kind() {
+		case mdast.KindTextBlock: // TASK items are hidden inside text blocks
+			for grandChild := child.FirstChild(); grandChild != nil; {
+				if grandChild.Kind() == mdastx.KindTaskCheckBox {
+					return handleTaskItem(child)
+				}
+				break
+			}
+
+		default:
+			children = append(children, ToBlocks(child)...)
+		}
+	}
+
+	return NewNtBlockBuilder(func(source []byte) nt.Block {
+		bb := nt.BasicBlock{
+			Object: nt.ObjectTypeBlock,
+		}
+		li := nt.ListItem{
+			RichText: mainContent.Build(source),
+			Children: children.Build(source),
+		}
+
+		if bulletted {
+			bb.Type = nt.BlockTypeBulletedListItem
 			return &nt.BulletedListItemBlock{
-				BasicBlock: nt.BasicBlock{
-					Object: nt.ObjectTypeBlock,
-					Type:   nt.BlockTypeBulletedListItem,
-				},
-				BulletedListItem: nt.ListItem{
-					RichText: mainContent.Build(source),
-					Children: children.Build(source),
-				},
+				BasicBlock:       bb,
+				BulletedListItem: li,
 			}
-		}),
-	}
-}
-
-// createBulletedListItem creates a bulleted list item from a markdown list item node
-func createBulletedListItem(node mdast.Node) *NtBlockBuilder {
-	// First, get the text content of this item (before any nested lists)
-	mainContent := extractMainContent(node)
-
-	// Then, handle any nested content (including nested lists)
-	var children NtBlockBuilders
-	var taskItems NtBlockBuilders // Collect all task items together
-
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		switch child.Kind() {
-		case mdast.KindList:
-			// Recursive handling of nested lists
-			children = append(children, handleList(child.(*mdast.List))...)
-		case mdast.KindTextBlock:
-			// Collect all task items from this text block
-			for grandChild := child.FirstChild(); grandChild != nil; grandChild = grandChild.NextSibling() {
-				if grandChild.Kind() == mdastx.KindTaskCheckBox {
-					taskItems = append(taskItems, createTodoItem(grandChild))
-				}
+		} else {
+			bb.Type = nt.BlockTypeNumberedListItem
+			return &nt.NumberedListItemBlock{
+				BasicBlock:       bb,
+				NumberedListItem: li,
 			}
-		}
-	}
-
-	// If we found any task items, add them all at once as children
-	if len(taskItems) > 0 {
-		children = append(children, taskItems...)
-	}
-
-	return NewNtBlockBuilder(func(source []byte) nt.Block {
-		return &nt.BulletedListItemBlock{
-			BasicBlock: nt.BasicBlock{
-				Object: nt.ObjectTypeBlock,
-				Type:   nt.BlockTypeBulletedListItem,
-			},
-			BulletedListItem: nt.ListItem{
-				RichText: mainContent.Build(source),
-				Children: children.Build(source),
-			},
 		}
 	})
 }
 
-// createNumberedListItem creates a numbered list item from a markdown list item node
-func createNumberedListItem(node mdast.Node) *NtBlockBuilder {
-	// First, get the text content of this item (before any nested lists)
-	mainContent := extractMainContent(node)
-
-	// Then, handle any nested content (including nested lists)
-	var children NtBlockBuilders
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		switch child.Kind() {
-		case mdast.KindList:
-			// Recursive handling of nested lists
-			children = append(children, handleList(child.(*mdast.List))...)
-		case mdast.KindTextBlock:
-			// Check for task items inside the text block
-			for grandChild := child.FirstChild(); grandChild != nil; grandChild = grandChild.NextSibling() {
-				if grandChild.Kind() == mdastx.KindTaskCheckBox {
-					children = append(children, createTodoItem(grandChild))
-				}
-			}
-		}
+// handleTaskItem handles given node to ensure it's a markdown task item
+// For this it should have first child as a checkbox and then its content
+func handleTaskItem(node mdast.Node) *NtBlockBuilder {
+	if node == nil || node.FirstChild() == nil {
+		return nil
 	}
-
-	return NewNtBlockBuilder(func(source []byte) nt.Block {
-		return &nt.NumberedListItemBlock{
-			BasicBlock: nt.BasicBlock{
-				Object: nt.ObjectTypeBlock,
-				Type:   nt.BlockTypeNumberedListItem,
-			},
-			NumberedListItem: nt.ListItem{
-				RichText: mainContent.Build(source),
-				Children: children.Build(source),
-			},
-		}
-	})
-}
-
-// createTodoItem creates a todo item from a markdown task checkbox node
-func createTodoItem(node mdast.Node) *NtBlockBuilder {
-	checkbox := node.(*mdastx.TaskCheckBox)
+	checkbox, ok := node.FirstChild().(*mdastx.TaskCheckBox)
+	if !ok {
+		return nil
+	}
 
 	// Get the text content that follows the checkbox
 	labels := make(NtRichTextBuilders, 0)
-	for next := node.NextSibling(); next != nil; next = next.NextSibling() {
+	for next := checkbox.NextSibling(); next != nil; next = next.NextSibling() {
 		if IsConvertableToRichText(next) {
 			labels = append(labels, flattenRichTexts(next)...)
 		}
@@ -836,41 +710,6 @@ func createTodoItem(node mdast.Node) *NtBlockBuilder {
 			},
 		}
 	})
-}
-
-// extractMainContent extracts text content while being careful about nested blocks
-func extractMainContent(node mdast.Node) NtRichTextBuilders {
-	texts := make(NtRichTextBuilders, 0)
-
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		// Skip lists as they should be handled as children
-		if child.Kind() == mdast.KindList {
-			continue
-		}
-
-		// For text blocks, we need to check their children for task items
-		if child.Kind() == mdast.KindTextBlock {
-			hasTaskItems := false
-			// Check if this text block contains any task items
-			for grandChild := child.FirstChild(); grandChild != nil; grandChild = grandChild.NextSibling() {
-				if grandChild.Kind() == mdastx.KindTaskCheckBox {
-					hasTaskItems = true
-					break
-				}
-			}
-			// Skip this text block if it contains task items
-			if hasTaskItems {
-				continue
-			}
-		}
-
-		// If we get here, it's safe to convert to rich text
-		if IsConvertableToRichText(child) {
-			texts = append(texts, flattenRichTexts(child)...)
-		}
-	}
-
-	return texts
 }
 
 func tabLog(level int, message string) {
