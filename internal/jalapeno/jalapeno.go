@@ -21,8 +21,8 @@ func NewParser(mdParser md.Markdown) *Parser {
 	return &Parser{mdParser: mdParser}
 }
 
-// ParsePage parses the given markdown source into blocks and properties of a Notion page
-func (p *Parser) ParsePage(source []byte) (nt.Blocks, nt.Properties, error) {
+// ParseBlocks parses the given markdown source into Notion Blocks
+func (p *Parser) ParseBlocks(source []byte) (nt.Blocks, error) {
 	tree := p.mdParser.Parser().Parse(mdtext.NewReader(source))
 
 	blockBuilders := make(NtBlockBuilders, 0)
@@ -36,11 +36,13 @@ func (p *Parser) ParsePage(source []byte) (nt.Blocks, nt.Properties, error) {
 		return mdast.WalkSkipChildren, nil
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to walk parsed Markdown AST: %w", err)
+		return nil, fmt.Errorf("failed to walk parsed Markdown AST: %w", err)
 	}
 
-	blocks := blockBuilders.Build(source)
+	return blockBuilders.Build(source), nil
+}
 
+func PrepareNotionPageProperties(blocks nt.Blocks) (nt.Blocks, nt.Properties) {
 	// TODO(amberpixels): handle headings equality spread (H1-H6 of markdown) spread into H1-H3 of notion
 	//                   The thing should be configurable
 
@@ -62,13 +64,11 @@ func (p *Parser) ParsePage(source []byte) (nt.Blocks, nt.Properties, error) {
 		}
 	}
 
-	properties := nt.Properties{
+	return blocks, nt.Properties{
 		string(nt.PropertyConfigTypeTitle): nt.TitleProperty{
 			Title: pageTitle,
 		},
 	}
-
-	return blocks, properties, nil
 }
 
 // IsConvertableToBlock returns if given Markdown AST node is convertable to notionapi Block

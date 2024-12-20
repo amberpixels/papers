@@ -65,10 +65,12 @@ func main() {
 	))
 
 	jalapeno.SetDebugSource(source)
-	blocks, props, err := p.ParsePage(source)
+	blocks, err := p.ParseBlocks(source)
 	if err != nil {
 		ExitWithError("Couldn't parse the given file", err)
 	}
+
+	blocks, props := jalapeno.PrepareNotionPageProperties(blocks)
 
 	slog.Debug("Using Notion API with the given token: " + in.NotionAPIToken)
 
