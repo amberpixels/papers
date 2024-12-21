@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/amberpixels/peppers/internal/jalapeno"
+	"github.com/amberpixels/peppers/internal/testhelpers"
 	nt "github.com/jomei/notionapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,23 +27,22 @@ var parserInstance = jalapeno.NewParser(goldmark.New(
 ))
 
 func TestParser_ParseBlocks(t *testing.T) {
-	xf := func(name, source string, expectedBlocks nt.Blocks, err error) {
-		// simple do nothing (SKIP the test)
-	}
-	_ = xf
+	type AssertFunc = func(t *testing.T, source string, expectedBlocks nt.Blocks)
+	type TestFunc = func(name string, source string, expectedBlocks nt.Blocks)
 
-	f := func(name, source string, expectedBlocks nt.Blocks) {
-		t.Run(name, func(t *testing.T) {
-			blocks, err := parserInstance.ParseBlocks([]byte(source))
+	f, ff, xf, run := testhelpers.GenerateCases[TestFunc, AssertFunc](t, func(t *testing.T, source string, expectedBlocks nt.Blocks) {
+		blocks, err := parserInstance.ParseBlocks([]byte(source))
 
-			require.NoError(t, err, "Parsing failed")
-			assert.Len(t, blocks, len(expectedBlocks), "Generated blocks do not match expected blocks")
-			for i, b := range blocks {
-				assert.Equal(t, expectedBlocks[i].GetType(), b.GetType(), fmt.Sprintf("Generated block[%d] do not match expected block", i))
-				assert.Equal(t, expectedBlocks[i], b, fmt.Sprintf("Generated block[%d] do not match expected block", i))
-			}
-		})
-	}
+		require.NoError(t, err, "Parsing failed")
+		assert.Len(t, blocks, len(expectedBlocks), "Generated blocks do not match expected blocks")
+		for i, b := range blocks {
+			assert.Equal(t, expectedBlocks[i].GetType(), b.GetType(),
+				fmt.Sprintf("Generated block[%d] do not match expected block", i))
+			assert.Equal(t, expectedBlocks[i], b,
+				fmt.Sprintf("Generated block[%d] do not match expected block", i))
+		}
+	})
+	_, _, _ = f, ff, xf
 
 	f("Single Heading1", "# Heading", nt.Blocks{
 		nt.NewHeading1Block(nt.Heading{
@@ -250,4 +250,6 @@ func TestParser_ParseBlocks(t *testing.T) {
 			Children: nt.Blocks{},
 		}),
 	})
+
+	run()
 }
