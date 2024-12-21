@@ -4,8 +4,8 @@ github.com/alecthomas/kong v1.6.0 h1:mwOzbdMR7uv2vul9J0FU3GYxE7ls/iX1ieMg5WIM6gE
 github.com/alecthomas/kong v1.6.0/go.mod h1:p2vqieVMeTAnaC83txKtXe8FLke2X07aruPWXyMPQrU=
 github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc=
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/amberpixels/notionapi v0.0.0-20241220211835-9cbb5232d733 h1:NLtfDaZZoSNly78nO0Lobc8aa5XIDkM54YJpomFL4vM=
-github.com/amberpixels/notionapi v0.0.0-20241220211835-9cbb5232d733/go.mod h1:BqzP6JBddpBnXvMSIxiR5dCoCjKngmz5QNl1ONDlDoM=
+github.com/amberpixels/notionapi v0.0.0-20241221003507-e57529ef2311 h1:kOCmH8kw4F3soTR4t6yH54Zncutu8iU+8Zyxi9bsBLI=
+github.com/amberpixels/notionapi v0.0.0-20241221003507-e57529ef2311/go.mod h1:BqzP6JBddpBnXvMSIxiR5dCoCjKngmz5QNl1ONDlDoM=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=

@@ -86,8 +86,9 @@ func IsConvertableToBlock(node mdast.Node) bool {
 func IsConvertableToRichText(node mdast.Node) bool {
 	switch node.(type) {
 	case *mdast.Heading, *mdast.Text,
-		*mdast.FencedCodeBlock, *mdast.ListItem, *mdast.AutoLink,
-		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph:
+		*mdast.FencedCodeBlock, *mdast.ListItem, *mdast.AutoLink, *mdast.Link,
+		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph,
+		*mdast.Emphasis, *mdastx.Strikethrough, *mdast.CodeSpan:
 		return true
 	case *mdast.TextBlock:
 		if node.FirstChild() != nil && node.FirstChild().Kind() == mdastx.KindTaskCheckBox {
@@ -153,59 +154,62 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 // flattenRichTexts flattens given MD as node into series of Notion RichTexts
 // Should be only used when we know that we can't build a nested block structure with the given node
 func flattenRichTexts(node mdast.Node) NtRichTextBuilders {
-	// Final point: If no has no children, try to get its content via Lines, Segment, etc
-	if node.ChildCount() == 0 {
-		return NtRichTextBuilders{ToRichText(node)}
-	}
+	t, _ := flatten(node)
+	return t
 
-	richTexts := make(NtRichTextBuilders, 0)
-
-	// If has children: recursively iterate and flatten results
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-
-		// Special handling:
-		switch child.Kind() {
-		case mdast.KindImage, mdastx.KindTaskCheckBox:
-			panic(fmt.Sprintf("flattenedRichTexts is not possible for %s. nestedObjects must be use", child.Kind()))
-		}
-
-		deeperRichTexts := flattenRichTexts(child)
-		DebugRichTexts(deeperRichTexts, fmt.Sprintf("   --> Flattening children of %s", child.Kind()))
-
-		// Special handling depending on the type of the child
-		switch v := child.(type) {
-		case *mdastx.Strikethrough:
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(strikethroughDecorator)
-			}
-		case *mdast.Emphasis:
-			for i := range deeperRichTexts {
-				if v.Level == 1 {
-					deeperRichTexts[i].DecorateWith(italicDecorator)
-				} else {
-					deeperRichTexts[i].DecorateWith(boldDecorator)
-				}
-			}
-		case *mdast.CodeSpan:
-			// Adding t.Annotations = code:true for each child
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(codeDecorator)
-			}
-
-		case *mdast.Link:
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
-			}
-
-		case *mdast.Text, *mdast.TextBlock, *mdast.RawHTML, *mdast.AutoLink:
-		default:
-			slog.Warn(fmt.Sprintf("Unhandled child's type: %s", v.Kind().String()))
-		}
-
-		richTexts = append(richTexts, deeperRichTexts...)
-	}
-
-	return richTexts
+	//// Final point: If no has no children, try to get its content via Lines, Segment, etc
+	//if node.ChildCount() == 0 {
+	//	return NtRichTextBuilders{ToRichText(node)}
+	//}
+	//
+	//richTexts := make(NtRichTextBuilders, 0)
+	//
+	//// If has children: recursively iterate and flatten results
+	//for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+	//
+	//	// Special handling:
+	//	switch child.Kind() {
+	//	case mdast.KindImage, mdastx.KindTaskCheckBox:
+	//		panic(fmt.Sprintf("flattenedRichTexts is not possible for %s. nestedObjects must be use", child.Kind()))
+	//	}
+	//
+	//	deeperRichTexts := flattenRichTexts(child)
+	//	DebugRichTexts(deeperRichTexts, fmt.Sprintf("   --> Flattening children of %s", child.Kind()))
+	//
+	//	// Special handling depending on the type of the child
+	//	switch v := child.(type) {
+	//	case *mdastx.Strikethrough:
+	//		for i := range deeperRichTexts {
+	//			deeperRichTexts[i].DecorateWith(strikethroughDecorator)
+	//		}
+	//	case *mdast.Emphasis:
+	//		for i := range deeperRichTexts {
+	//			if v.Level == 1 {
+	//				deeperRichTexts[i].DecorateWith(italicDecorator)
+	//			} else {
+	//				deeperRichTexts[i].DecorateWith(boldDecorator)
+	//			}
+	//		}
+	//	case *mdast.CodeSpan:
+	//		// Adding t.Annotations = code:true for each child
+	//		for i := range deeperRichTexts {
+	//			deeperRichTexts[i].DecorateWith(codeDecorator)
+	//		}
+	//
+	//	case *mdast.Link:
+	//		for i := range deeperRichTexts {
+	//			deeperRichTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
+	//		}
+	//
+	//	case *mdast.Text, *mdast.TextBlock, *mdast.RawHTML, *mdast.AutoLink:
+	//	default:
+	//		slog.Warn(fmt.Sprintf("Unhandled child's type: %s", v.Kind().String()))
+	//	}
+	//
+	//	richTexts = append(richTexts, deeperRichTexts...)
+	//}
+	//
+	//return richTexts
 }
 
 // flatten flattens given MD ast node into series of Notion RichTexts and (optionally) Blocks.
@@ -246,61 +250,6 @@ func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, bl
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		iSibling++
 
-		// Special handling:
-		switch v := child.(type) {
-		case *mdast.Image:
-			/*
-				// make a copy of the rich texts inside, as they will become Image Caption
-				// but we nil-ify the original rich texts as to prevent them from duplicating
-				captionRichTexts := append(NtRichTextBuilders{}, deeperRichTexts...)
-				deeperRichTexts = nil
-				blocks = append(blocks, NewNtBlockBuilder(func(source []byte) nt.Block {
-					return &nt.ImageBlock{
-						BasicBlock: nt.BasicBlock{
-							Object: nt.ObjectTypeBlock,
-							Type:   nt.BlockTypeImage,
-						},
-						Image: nt.Image{
-							Type: nt.FileTypeExternal,
-							External: &nt.FileObject{
-								URL: string(v.Destination),
-							},
-							// TODO(amberpixels): in case if image had a link parent, we need to do caption as link
-							Caption: captionRichTexts.Build(source),
-						},
-					}
-				}))
-			*/
-		case *mdastx.TaskCheckBox:
-
-			// [ x ] Some text
-			//   ^---  ---------child
-			//       ^---- next
-			// So we need to create a block for checkbox with RichTexts taken from the rest of the siblings:
-			labels := make(NtRichTextBuilders, 0)
-			for next := child.NextSibling(); next != nil; next = next.NextSibling() {
-				tabLog(level, fmt.Sprintf("flattening %d TASK CHECK sibling", iSibling))
-				siblingTexts, _ := flatten(next, level+1)
-				labels = append(labels, siblingTexts...)
-			}
-			block := NewNtBlockBuilder(func(source []byte) nt.Block {
-				return &nt.ToDoBlock{
-					BasicBlock: nt.BasicBlock{
-						Object: nt.ObjectTypeBlock,
-						Type:   nt.BlockTypeToDo,
-					},
-					ToDo: nt.ToDo{
-						Checked:  v.IsChecked,
-						RichText: labels.Build(source),
-					},
-				}
-			})
-
-			DebugBlock(block, "TODO Task")
-
-			return nil, NtBlockBuilders{block}
-		}
-
 		// Rest are fine: simply flatten and maybe decorate
 
 		// Flatten children of current child
@@ -311,7 +260,7 @@ func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, bl
 		DebugRichTexts(deeperRichTexts, fmt.Sprintf("Flattening children of %s", child.Kind()))
 
 		// Special handling depending on the type of the child
-		switch v := child.(type) {
+		switch v := node.(type) {
 		case *mdastx.Strikethrough:
 			for i := range deeperRichTexts {
 				deeperRichTexts[i].DecorateWith(strikethroughDecorator)
