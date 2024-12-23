@@ -62,32 +62,33 @@ func TestParser_ParseBlocks(t *testing.T) {
 	f("Headings H1 to H4", `# Heading 1
 ## Heading 2
 ### Heading 3
-#### Heading 4`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Heading"),
-				*nt.NewTextRichText(" 1"),
-			},
-		}),
-		nt.NewHeading2Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Heading"),
-				*nt.NewTextRichText(" 2"),
-			},
-		}),
-		nt.NewHeading3Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Heading"),
-				*nt.NewTextRichText(" 3"),
-			},
-		}),
-		nt.NewHeading3Block(nt.Heading{ // H4 is converted to Heading3
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Heading"),
-				*nt.NewTextRichText(" 4"),
-			},
-		}),
-	})
+#### Heading 4`,
+		nt.Blocks{
+			nt.NewHeading1Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 1"),
+				},
+			}),
+			nt.NewHeading2Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 2"),
+				},
+			}),
+			nt.NewHeading3Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 3"),
+				},
+			}),
+			nt.NewHeading3Block(nt.Heading{ // H4 is converted to Heading3
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 4"),
+				},
+			}),
+		})
 
 	f("Just a paragraph", `Hello Foobar`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
@@ -228,28 +229,358 @@ func TestParser_ParseBlocks(t *testing.T) {
 	f("Headings + Paragraph with code inline", `# Your Readme Package name
 
 ## Overview
-`+"The `packageName` package provides a set of function for doing something useful.", nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Your Readme Package"),
-				*nt.NewTextRichText(" name"),
-			},
-		}),
-		nt.NewHeading2Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Overview"),
-			},
-		}),
-		nt.NewParagraphBlock(nt.Paragraph{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("The "),
-				*nt.NewTextRichText("packageName").AnnotateCode(),
-				*nt.NewTextRichText(" package provides a set of function for doing something"),
-				*nt.NewTextRichText(" useful."),
-			},
-			Children: nt.Blocks{},
-		}),
-	})
+`+"The `packageName` package provides a set of function for doing something useful.",
+		nt.Blocks{
+			nt.NewHeading1Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Your Readme Package"),
+					*nt.NewTextRichText(" name"),
+				},
+			}),
+			nt.NewHeading2Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Overview"),
+				},
+			}),
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("The "),
+					*nt.NewTextRichText("packageName").AnnotateCode(),
+					*nt.NewTextRichText(" package provides a set of function for doing something"),
+					*nt.NewTextRichText(" useful."),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Simple Bulleted List", `- Item 1
+- Item 2
+- Item 3`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 3"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Simple Numbered List", `1. Item 1
+2. Item 2
+3. Item 3`,
+		nt.Blocks{
+			nt.NewNumberedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewNumberedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewNumberedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 3"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Nested Bulleted List", `- Item 1
+  - Subitem 1.1
+  - Subitem 1.2
+  - Subitem 1.3
+- Item 2
+  - Subitem 2.1
+  - Subitem 2.2
+  - Subitem 2.3`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.1"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.2"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.3"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.1"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.2"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.3"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		})
+
+	f("Nested Numbered List Inside Bulleted List", `- Item 1
+  1. Subitem 1.1
+  2. Subitem 1.2
+  3. Subitem 1.3
+- Item 2
+  1. Subitem 2.1
+  2. Subitem 2.2
+  3. Subitem 2.3`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.1"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.2"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 1.3"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.1"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.2"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Subitem"),
+							*nt.NewTextRichText(" 2.3"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		})
+
+	f("3-Level Deep Nested List with Mixed Bulleted and Numbered Items",
+
+		`- **Top Level 1**
+  1. Second Level 1.1 with [a link](https://example.com)
+  2. *Second Level 1.2*
+      - Third Level 1.2.1
+      - Third Level 1.2.2
+- Top Level 2
+  1. Second Level 2.1
+      - Third Level 2.1.1
+      - **Third Level 2.1.2** with *italic text*
+  2. Second Level 2.2`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Top Level 1").AnnotateBold(),
+				},
+				Children: nt.Blocks{
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Second Level 1.1 with "),
+							*nt.NewLinkRichText("a link", "https://example.com"),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Second Level 1.2").AnnotateItalic(),
+						},
+						Children: nt.Blocks{
+							nt.NewBulletedListItemBlock(nt.ListItem{
+								RichText: []nt.RichText{
+									*nt.NewTextRichText("Third Level"),
+									*nt.NewTextRichText(" 1.2.1"),
+								},
+								Children: nt.Blocks{},
+							}),
+							nt.NewBulletedListItemBlock(nt.ListItem{
+								RichText: []nt.RichText{
+									*nt.NewTextRichText("Third Level"),
+									*nt.NewTextRichText(" 1.2.2"),
+								},
+								Children: nt.Blocks{},
+							}),
+						},
+					}),
+				},
+			}),
+
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Top Level"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Second Level"),
+							*nt.NewTextRichText(" 2.1"),
+						},
+						Children: nt.Blocks{
+							nt.NewBulletedListItemBlock(nt.ListItem{
+								RichText: []nt.RichText{
+									*nt.NewTextRichText("Third Level"),
+									*nt.NewTextRichText(" 2.1.1"),
+								},
+								Children: nt.Blocks{},
+							}),
+							nt.NewBulletedListItemBlock(nt.ListItem{
+								RichText: []nt.RichText{
+									*nt.NewTextRichText("Third Level 2.1.2").AnnotateBold(),
+									*nt.NewTextRichText(" with "),
+									*nt.NewTextRichText("italic text").AnnotateItalic(),
+								},
+								Children: nt.Blocks{},
+							}),
+						},
+					}),
+					nt.NewNumberedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Second Level"),
+							*nt.NewTextRichText(" 2.2"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		})
+
+	f("Simple TODO List", `- [ ] Item 1
+- [ ] Item 2
+- [x] Item 3`,
+		nt.Blocks{
+			nt.NewToDoBlock(nt.ToDo{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+			}),
+			nt.NewToDoBlock(nt.ToDo{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+			}),
+			nt.NewToDoBlock(nt.ToDo{
+				Checked: true,
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 3"),
+				},
+			}),
+		})
+
+	f("Simple TODO List + emphasis", `- [ ] Item 1
+- [ ] _Item 2_
+- [x] **Item 3**`,
+		nt.Blocks{
+			nt.NewToDoBlock(nt.ToDo{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+			}),
+			nt.NewToDoBlock(nt.ToDo{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item 2").AnnotateItalic(),
+				},
+			}),
+			nt.NewToDoBlock(nt.ToDo{
+				Checked: true,
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item 3").AnnotateBold(),
+				},
+			}),
+		})
 
 	run()
 }
