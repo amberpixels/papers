@@ -582,5 +582,40 @@ func TestParser_ParseBlocks(t *testing.T) {
 			}),
 		})
 
+	ff("Bulleted List with Nested TODO List", `- Item 1
+  - [ ] TODO 1
+  - [x] TODO 2
+- Item 2`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{
+					nt.NewToDoBlock(nt.ToDo{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("TODO"),
+							*nt.NewTextRichText(" 1"),
+						},
+					}),
+					nt.NewToDoBlock(nt.ToDo{
+						Checked: true,
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("TODO"),
+							*nt.NewTextRichText(" 2"),
+						},
+					}),
+				},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
 	run()
 }
