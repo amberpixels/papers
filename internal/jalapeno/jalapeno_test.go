@@ -534,6 +534,10 @@ func TestParser_ParseBlocks(t *testing.T) {
 			}),
 		})
 
+	// --------------
+	// --- TASKS ----
+	// --------------
+
 	f("Simple TODO List", `- [ ] Item 1
 - [ ] Item 2
 - [x] Item 3`,
@@ -582,7 +586,7 @@ func TestParser_ParseBlocks(t *testing.T) {
 			}),
 		})
 
-	ff("Bulleted List with Nested TODO List", `- Item 1
+	f("Bulleted List with Nested TODO List", `- Item 1
   - [ ] TODO 1
   - [x] TODO 2
 - Item 2`,
@@ -614,6 +618,148 @@ func TestParser_ParseBlocks(t *testing.T) {
 					*nt.NewTextRichText(" 2"),
 				},
 				Children: nt.Blocks{},
+			}),
+		})
+
+	// --------------
+	// --- CODE -----
+	// --------------
+
+	f("Simple Fenced Code Block", "```go\npackage main\n\nfunc main() {\n\tfmt.Println(\"Hello, World!\")\n}\n```",
+		nt.Blocks{
+			nt.NewCodeBlock(nt.Code{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("package main\n\nfunc main() {\n\tfmt.Println(\"Hello, World!\")\n}"),
+				},
+				Language: "go",
+			}),
+		})
+
+	f("Heading H1 + Heading H2 + Fenced Code Block", fmt.Sprintf(`# Heading 1
+## Heading 2
+
+%sgo
+package main
+
+func main() {
+		fmt.Println("Hello, World!")
+}
+%s`, "```", "```"),
+		nt.Blocks{
+			nt.NewHeading1Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 1"),
+				},
+			}),
+			nt.NewHeading2Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Heading"),
+					*nt.NewTextRichText(" 2"),
+				},
+			}),
+			nt.NewCodeBlock(nt.Code{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("package main\n\nfunc main() {\n\t\tfmt.Println(\"Hello, World!\")\n}"),
+				},
+				Language: "go",
+			}),
+		})
+
+	// --------------
+	// --- TABLES ---
+	// --------------
+
+	ff("Simple Markdown Table", `| Column1 | Column2 |
+|---------|---------|
+| Value1  | Value2  |
+| Value3  | Value4  |`,
+		nt.Blocks{
+			nt.NewTableBlock(nt.Table{
+				TableWidth:      2,
+				HasColumnHeader: true,
+				Children: nt.Blocks{
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Column1")},
+							{*nt.NewTextRichText("Column2")},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Value1")},
+							{*nt.NewTextRichText("Value2")},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Value3")},
+							{*nt.NewTextRichText("Value4")},
+						},
+					}),
+				},
+			}),
+		})
+
+	f("Markdown Table with Emphasis in Cells", `| Column1    | Column2    |
+|------------|------------|
+| *Italic*   | **Bold**   |
+| ~~Strike~~ | `+"`Code`"+` |`,
+		nt.Blocks{
+			nt.NewTableBlock(nt.Table{
+				TableWidth:      2,
+				HasColumnHeader: true,
+				Children: nt.Blocks{
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Column1")},
+							{*nt.NewTextRichText("Column2")},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Italic").AnnotateItalic()},
+							{*nt.NewTextRichText("Bold").AnnotateBold()},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Strike").AnnotateStrikethrough()},
+							{*nt.NewTextRichText("Code").AnnotateCode()},
+						},
+					}),
+				},
+			}),
+		})
+
+	f("Markdown Table with URLs in Cells", `| Column1       | Column2        |
+|---------------|----------------|
+| [Google](https://google.com) | [OpenAI](https://openai.com) |
+| Plain URL     | https://example.com |`,
+		nt.Blocks{
+			nt.NewTableBlock(nt.Table{
+				TableWidth:      2,
+				HasColumnHeader: true,
+				Children: nt.Blocks{
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Column1")},
+							{*nt.NewTextRichText("Column2")},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewLinkRichText("Google", "https://google.com")},
+							{*nt.NewLinkRichText("OpenAI", "https://openai.com")},
+						},
+					}),
+					nt.NewTableRowBlock(nt.TableRow{
+						Cells: [][]nt.RichText{
+							{*nt.NewTextRichText("Plain"), *nt.NewTextRichText(" URL")},
+							{*nt.NewLinkRichText("https://example.com", "https://example.com")},
+						},
+					}),
+				},
 			}),
 		})
 
