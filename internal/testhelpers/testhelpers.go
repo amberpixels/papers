@@ -7,10 +7,10 @@ import (
 )
 
 type TestRunner[T any, A any] struct {
-	focused []func(*testing.T)
-	regular []func(*testing.T)
 	t       *testing.T
 	assert  A
+	focused []func(*testing.T)
+	regular []func(*testing.T)
 }
 
 func NewTestRunner[T any, A any](t *testing.T, assert A) *TestRunner[T, A] {
