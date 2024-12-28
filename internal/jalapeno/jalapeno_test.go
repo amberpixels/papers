@@ -44,6 +44,10 @@ func TestParser_ParseBlocks(t *testing.T) {
 	})
 	_, _, _ = f, ff, xf
 
+	// -----------------
+	// --- HEADINGS ----
+	// -----------------
+
 	f("Single Heading1", "# Heading", nt.Blocks{
 		nt.NewHeading1Block(nt.Heading{
 			RichText: []nt.RichText{
@@ -89,6 +93,88 @@ func TestParser_ParseBlocks(t *testing.T) {
 				},
 			}),
 		})
+
+	f("Heading with non-inline link", `# Hello [OpenAI](https://openai.com)`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello "),
+				*nt.NewLinkRichText("OpenAI", "https://openai.com"),
+			},
+		}),
+	})
+
+	f("Heading with inline link", `# Hello https://openai.com`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello "),
+				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
+			},
+		}),
+	})
+
+	f("Heading2 with an inline link in brackets", `## Hello (https://openai.com)`, nt.Blocks{
+		nt.NewHeading2Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello ("),
+				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
+				*nt.NewTextRichText(")"),
+			},
+		}),
+	})
+
+	f("Heading with annotations + link", `# **ULID** Wrapper for *PostgreSQL* and *GORM* [link inside](https://github.com/oklog/ulid)`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("ULID").AnnotateBold(),
+				*nt.NewTextRichText(" Wrapper for "),
+				*nt.NewTextRichText("PostgreSQL").AnnotateItalic(),
+				*nt.NewTextRichText(" and "),
+				*nt.NewTextRichText("GORM").AnnotateItalic(),
+				*nt.NewTextRichText(" "),
+				*nt.NewLinkRichText("link inside", "https://github.com/oklog/ulid"),
+			},
+		}),
+	})
+
+	f("Heading with inline code", "# This is `inline code`", nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("This is "),
+				*nt.NewTextRichText("inline code").AnnotateCode(),
+			},
+		}),
+	})
+
+	f("Headings + Paragraph with code inline", `# Your Readme Package name
+
+## Overview
+`+"The `packageName` package provides a set of function for doing something useful.",
+		nt.Blocks{
+			nt.NewHeading1Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Your Readme Package"),
+					*nt.NewTextRichText(" name"),
+				},
+			}),
+			nt.NewHeading2Block(nt.Heading{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Overview"),
+				},
+			}),
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("The "),
+					*nt.NewTextRichText("packageName").AnnotateCode(),
+					*nt.NewTextRichText(" package provides a set of function for doing something"),
+					*nt.NewTextRichText(" useful."),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	// -------------------
+	// --- PARAGRAPHS ----
+	// -------------------
 
 	f("Just a paragraph", `Hello Foobar`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
@@ -165,48 +251,6 @@ func TestParser_ParseBlocks(t *testing.T) {
 		}),
 	})
 
-	f("Heading with non-inline link", `# Hello [OpenAI](https://openai.com)`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello "),
-				*nt.NewLinkRichText("OpenAI", "https://openai.com"),
-			},
-		}),
-	})
-
-	f("Heading with inline link", `# Hello https://openai.com`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello "),
-				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
-			},
-		}),
-	})
-
-	f("Heading2 with an inline link in brackets", `## Hello (https://openai.com)`, nt.Blocks{
-		nt.NewHeading2Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello ("),
-				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
-				*nt.NewTextRichText(")"),
-			},
-		}),
-	})
-
-	f("Heading with annotations + link", `# **ULID** Wrapper for *PostgreSQL* and *GORM* [link inside](https://github.com/oklog/ulid)`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("ULID").AnnotateBold(),
-				*nt.NewTextRichText(" Wrapper for "),
-				*nt.NewTextRichText("PostgreSQL").AnnotateItalic(),
-				*nt.NewTextRichText(" and "),
-				*nt.NewTextRichText("GORM").AnnotateItalic(),
-				*nt.NewTextRichText(" "),
-				*nt.NewLinkRichText("link inside", "https://github.com/oklog/ulid"),
-			},
-		}),
-	})
-
 	f("Paragraph with inline code", "This is `inline code`", nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
 			RichText: []nt.RichText{
@@ -217,41 +261,9 @@ func TestParser_ParseBlocks(t *testing.T) {
 		}),
 	})
 
-	f("Heading with inline code", "# This is `inline code`", nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("This is "),
-				*nt.NewTextRichText("inline code").AnnotateCode(),
-			},
-		}),
-	})
-
-	f("Headings + Paragraph with code inline", `# Your Readme Package name
-
-## Overview
-`+"The `packageName` package provides a set of function for doing something useful.",
-		nt.Blocks{
-			nt.NewHeading1Block(nt.Heading{
-				RichText: []nt.RichText{
-					*nt.NewTextRichText("Your Readme Package"),
-					*nt.NewTextRichText(" name"),
-				},
-			}),
-			nt.NewHeading2Block(nt.Heading{
-				RichText: []nt.RichText{
-					*nt.NewTextRichText("Overview"),
-				},
-			}),
-			nt.NewParagraphBlock(nt.Paragraph{
-				RichText: []nt.RichText{
-					*nt.NewTextRichText("The "),
-					*nt.NewTextRichText("packageName").AnnotateCode(),
-					*nt.NewTextRichText(" package provides a set of function for doing something"),
-					*nt.NewTextRichText(" useful."),
-				},
-				Children: nt.Blocks{},
-			}),
-		})
+	// --------------
+	// --- LISTS ----
+	// --------------
 
 	f("Simple Bulleted List", `- Item 1
 - Item 2
@@ -842,6 +854,17 @@ func main() {
 
 	f("Horizontal Rule", `---`, nt.Blocks{
 		nt.NewDividerBlock(),
+	})
+
+	f("Basic HTML", `Hello<br>World`, nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello"),
+				*nt.NewTextRichText("\n"),
+				*nt.NewTextRichText("World"),
+			},
+			Children: nt.Blocks{},
+		}),
 	})
 
 	run()
