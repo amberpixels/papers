@@ -44,11 +44,34 @@ func TestParser_ParseBlocks(t *testing.T) {
 	})
 	_, _, _ = f, ff, xf
 
+	f("Empty document", "", nt.Blocks{})
+
 	// -----------------
 	// --- HEADINGS ----
 	// -----------------
 
+	f("Empty Heading1", "#", nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText(""),
+			},
+		}),
+	})
+	f("Empty Heading1 with whitespace", "#   ", nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText(""), // whitespace is trimmed
+			},
+		}),
+	})
 	f("Single Heading1", "# Heading", nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Heading"),
+			},
+		}),
+	})
+	f("Alternative heading 1", "Heading\n===", nt.Blocks{
 		nt.NewHeading1Block(nt.Heading{
 			RichText: []nt.RichText{
 				*nt.NewTextRichText("Heading"),
@@ -63,6 +86,16 @@ func TestParser_ParseBlocks(t *testing.T) {
 			},
 		}),
 	})
+
+	f("Alternative Heading2", "Heading Foobar\n--------------", nt.Blocks{
+		nt.NewHeading2Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Heading"),
+				*nt.NewTextRichText(" Foobar"),
+			},
+		}),
+	})
+
 	f("Headings H1 to H4", `# Heading 1
 ## Heading 2
 ### Heading 3
@@ -93,48 +126,6 @@ func TestParser_ParseBlocks(t *testing.T) {
 				},
 			}),
 		})
-
-	f("Heading with non-inline link", `# Hello [OpenAI](https://openai.com)`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello "),
-				*nt.NewLinkRichText("OpenAI", "https://openai.com"),
-			},
-		}),
-	})
-
-	f("Heading with inline link", `# Hello https://openai.com`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello "),
-				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
-			},
-		}),
-	})
-
-	f("Heading2 with an inline link in brackets", `## Hello (https://openai.com)`, nt.Blocks{
-		nt.NewHeading2Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("Hello ("),
-				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
-				*nt.NewTextRichText(")"),
-			},
-		}),
-	})
-
-	f("Heading with annotations + link", `# **ULID** Wrapper for *PostgreSQL* and *GORM* [link inside](https://github.com/oklog/ulid)`, nt.Blocks{
-		nt.NewHeading1Block(nt.Heading{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("ULID").AnnotateBold(),
-				*nt.NewTextRichText(" Wrapper for "),
-				*nt.NewTextRichText("PostgreSQL").AnnotateItalic(),
-				*nt.NewTextRichText(" and "),
-				*nt.NewTextRichText("GORM").AnnotateItalic(),
-				*nt.NewTextRichText(" "),
-				*nt.NewLinkRichText("link inside", "https://github.com/oklog/ulid"),
-			},
-		}),
-	})
 
 	f("Heading with inline code", "# This is `inline code`", nt.Blocks{
 		nt.NewHeading1Block(nt.Heading{
@@ -176,7 +167,10 @@ func TestParser_ParseBlocks(t *testing.T) {
 	// --- PARAGRAPHS ----
 	// -------------------
 
-	f("Just a paragraph", `Hello Foobar`, nt.Blocks{
+	f("Empty paragram (with whitespace)", " \t\t ", nt.Blocks{})
+	f("Empty paragram (multiline with whitespace)", " \t\n\n\t ", nt.Blocks{})
+
+	f("Simple oneline paragraph", `Hello Foobar`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
 			RichText: []nt.RichText{
 				*nt.NewTextRichText("Hello"),
@@ -185,6 +179,25 @@ func TestParser_ParseBlocks(t *testing.T) {
 			Children: nt.Blocks{},
 		}),
 	})
+
+	f("Simple multiline paragraph", `
+This is the first line
+this is the second
+and the third.
+`,
+		nt.Blocks{
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("This is the first"),
+					*nt.NewTextRichText(" line"),
+					*nt.NewTextRichText("this is the"),
+					*nt.NewTextRichText(" second"),
+					*nt.NewTextRichText("and the"),
+					*nt.NewTextRichText(" third."),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
 
 	f("Paragraph with emphasis", `Hello **foobar**`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
@@ -231,6 +244,89 @@ func TestParser_ParseBlocks(t *testing.T) {
 		}),
 	})
 
+	f("Paragraph with inline code", "This is `inline code`", nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("This is "),
+				*nt.NewTextRichText("inline code").AnnotateCode(),
+			},
+			Children: nt.Blocks{},
+		}),
+	})
+
+	// --------------
+	// --- LINKS ----
+	// --------------
+
+	f("Simple link", "[OpenAI](https://openai.com)", nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewLinkRichText("OpenAI", "https://openai.com"),
+			},
+			Children: nt.Blocks{},
+		}),
+	})
+
+	f("Simple inline link", "https://openai.com", nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
+			},
+			Children: nt.Blocks{},
+		}),
+	})
+
+	f("Simple explicit link", "<fake@gmail.com>", nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewLinkRichText("fake@gmail.com", "fake@gmail.com"),
+			},
+			Children: nt.Blocks{},
+		}),
+	})
+
+	f("Heading with non-inline link", `# Hello [OpenAI](https://openai.com)`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello "),
+				*nt.NewLinkRichText("OpenAI", "https://openai.com"),
+			},
+		}),
+	})
+
+	f("Heading with inline link", `# Hello https://openai.com`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello "),
+				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
+			},
+		}),
+	})
+
+	f("Heading2 with an inline link in brackets", `## Hello (https://openai.com)`, nt.Blocks{
+		nt.NewHeading2Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello ("),
+				*nt.NewLinkRichText("https://openai.com", "https://openai.com"),
+				*nt.NewTextRichText(")"),
+			},
+		}),
+	})
+
+	f("Heading with annotations + link", `# **ULID** Wrapper for *PostgreSQL* and *GORM* [link inside](https://github.com/oklog/ulid)`, nt.Blocks{
+		nt.NewHeading1Block(nt.Heading{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("ULID").AnnotateBold(),
+				*nt.NewTextRichText(" Wrapper for "),
+				*nt.NewTextRichText("PostgreSQL").AnnotateItalic(),
+				*nt.NewTextRichText(" and "),
+				*nt.NewTextRichText("GORM").AnnotateItalic(),
+				*nt.NewTextRichText(" "),
+				*nt.NewLinkRichText("link inside", "https://github.com/oklog/ulid"),
+			},
+		}),
+	})
+
 	f("Paragraph with one link", `Visit [OpenAI](https://openai.com)`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
 			RichText: []nt.RichText{
@@ -251,11 +347,21 @@ func TestParser_ParseBlocks(t *testing.T) {
 		}),
 	})
 
-	f("Paragraph with inline code", "This is `inline code`", nt.Blocks{
+	f("Formatting links", `
+I love supporting the **[EFF](https://eff.org)**.
+This is the *[Markdown Guide](https://www.markdownguide.org)*.
+See the section on [`+"`code`"+`](#code).`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
 			RichText: []nt.RichText{
-				*nt.NewTextRichText("This is "),
-				*nt.NewTextRichText("inline code").AnnotateCode(),
+				*nt.NewTextRichText("I love supporting the "),
+				*nt.NewLinkRichText("EFF", "https://eff.org").AnnotateBold(),
+				*nt.NewTextRichText("."),
+				*nt.NewTextRichText("This is the "),
+				*nt.NewLinkRichText("Markdown Guide", "https://www.markdownguide.org").AnnotateItalic(),
+				*nt.NewTextRichText("."),
+				*nt.NewTextRichText("See the section on "),
+				*nt.NewLinkRichText("code", "#code").AnnotateCode(),
+				*nt.NewTextRichText("."),
 			},
 			Children: nt.Blocks{},
 		}),
@@ -546,6 +652,26 @@ func TestParser_ParseBlocks(t *testing.T) {
 			}),
 		})
 
+	f("Unordered List Items With Numbers", `
+- 1968\. A great year!
+- I think 1969 was second best.`,
+		nt.Blocks{
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("1968\\. A great year"),
+					*nt.NewTextRichText("!"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewBulletedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("I think 1969 was second"),
+					*nt.NewTextRichText(" best."),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
 	// --------------
 	// --- TASKS ----
 	// --------------
@@ -598,9 +724,10 @@ func TestParser_ParseBlocks(t *testing.T) {
 			}),
 		})
 
-	f("Bulleted List with Nested TODO List", `- Item 1
-  - [ ] TODO 1
-  - [x] TODO 2
+	f("Bulleted List with Nested TODO List", `
+- Item 1
+	- [ ] TODO 1
+	- [x] TODO 2
 - Item 2`,
 		nt.Blocks{
 			nt.NewBulletedListItemBlock(nt.ListItem{
@@ -636,6 +763,19 @@ func TestParser_ParseBlocks(t *testing.T) {
 	// --------------
 	// --- CODE -----
 	// --------------
+
+	f("Simple Non-Fenced Code Block", `
+	package main
+	func main() {
+		fmt.Println("Hello, World!")
+	}`,
+		nt.Blocks{
+			nt.NewCodeBlock(nt.Code{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("package main\nfunc main() {\n\tfmt.Println(\"Hello, World!\")\n}"),
+				},
+			}),
+		})
 
 	f("Simple Fenced Code Block", "```go\npackage main\n\nfunc main() {\n\tfmt.Println(\"Hello, World!\")\n}\n```",
 		nt.Blocks{
@@ -775,11 +915,11 @@ func main() {
 			}),
 		})
 
-	// --------------
-	// --- QUOTES ---
-	// --------------
+	// -------------------
+	// --- BLOCKQUOTES ---
+	// -------------------
 
-	f("Simple Block Quote", `> This is a block quote`,
+	f("Simple Blockquote", `> This is a block quote`,
 		nt.Blocks{
 			nt.NewQuoteBlock(nt.Quote{
 				RichText: []nt.RichText{
@@ -790,25 +930,112 @@ func main() {
 			}),
 		})
 
-	f("Nested Block Quotes", `> This is a block quote
-> > This is a nested block quote`,
+	f("Multiline Blockquote", "> This is a block quote\n>\n> This is the last line",
 		nt.Blocks{
 			nt.NewQuoteBlock(nt.Quote{
 				RichText: []nt.RichText{
 					*nt.NewTextRichText("This is a block"),
 					*nt.NewTextRichText(" quote"),
+					*nt.NewTextRichText("This is the last"),
+					*nt.NewTextRichText(" line"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Nested Blockquotes", `> This is a blockquote
+> > This is a nested blockquote`,
+		nt.Blocks{
+			nt.NewQuoteBlock(nt.Quote{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("This is a"),
+					*nt.NewTextRichText(" blockquote"),
 				},
 				Children: nt.Blocks{
 					nt.NewQuoteBlock(nt.Quote{
 						RichText: []nt.RichText{
-							*nt.NewTextRichText("This is a nested block"),
-							*nt.NewTextRichText(" quote"),
+							*nt.NewTextRichText("This is a nested"),
+							*nt.NewTextRichText(" blockquote"),
 						},
 						Children: nt.Blocks{},
 					}),
 				},
 			}),
 		})
+
+	f("Blockquotes with nested elements", `
+> #### The quarterly results look great!
+> Second line
+`,
+		nt.Blocks{
+			nt.NewQuoteBlock(nt.Quote{
+				RichText: []nt.RichText{},
+				Children: nt.Blocks{
+					nt.NewHeading3Block(nt.Heading{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("The quarterly results look great"),
+							*nt.NewTextRichText("!"),
+						},
+					}),
+					nt.NewParagraphBlock(nt.Paragraph{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Second"),
+							*nt.NewTextRichText(" line"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		},
+	)
+
+	f("Blockquotes with more nested elements", `
+> #### The quarterly results look great!
+>
+> - Revenue was off the chart.
+> - Profits were higher than ever.
+>
+>  *Everything* is going according to **plan**.
+`,
+		nt.Blocks{
+			nt.NewQuoteBlock(nt.Quote{
+				RichText: []nt.RichText{},
+				Children: nt.Blocks{
+					nt.NewHeading3Block(nt.Heading{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("The quarterly results look great"),
+							*nt.NewTextRichText("!"),
+						},
+					}),
+
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Revenue was off the"),
+							*nt.NewTextRichText(" chart."),
+						},
+						Children: nt.Blocks{},
+					}),
+					nt.NewBulletedListItemBlock(nt.ListItem{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Profits were higher than"),
+							*nt.NewTextRichText(" ever."),
+						},
+						Children: nt.Blocks{},
+					}),
+
+					nt.NewParagraphBlock(nt.Paragraph{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("Everything").AnnotateItalic(),
+							*nt.NewTextRichText(" is going according to "),
+							*nt.NewTextRichText("plan").AnnotateBold(),
+							*nt.NewTextRichText("."),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		},
+	)
 
 	// --------------
 	// --- IMAGES ---
@@ -856,6 +1083,10 @@ func main() {
 		nt.NewDividerBlock(),
 	})
 
+	// --------------
+	// --- HTML -----
+	// --------------
+
 	f("Basic HTML", `Hello<br>World`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
 			RichText: []nt.RichText{
@@ -864,6 +1095,18 @@ func main() {
 				*nt.NewTextRichText("World"),
 			},
 			Children: nt.Blocks{},
+		}),
+	})
+
+	// FOR NOW: we're OK with simply Paragraph with raw HTML
+	f("HTML Block", `<div>
+  <p>This is an HTML block</p>
+</div>`, nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("<div>\n  <p>this is an html block</p>\n</div>"),
+			},
+			Children: nil,
 		}),
 	})
 

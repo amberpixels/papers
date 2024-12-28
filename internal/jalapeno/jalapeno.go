@@ -12,6 +12,9 @@ import (
 	mdtext "github.com/yuin/goldmark/text"
 )
 
+// TODO: weird stuff with blockquotes: E.g. when markdown blockquote has a first heading child, it's shown with an
+// empty rich-text contents then. So, it must have at least some basic text content (we keep it empty for this)
+
 // Parser stands for an instance
 type Parser struct {
 	mdParser md.Markdown
@@ -80,20 +83,22 @@ func IsConvertableToBlock(node mdast.Node) bool {
 	case *mdast.Image, *mdastx.TaskCheckBox, *mdast.Blockquote:
 		return true
 	default:
-		return false
+		return false // NOCOV
 	}
 }
 
 // IsConvertableToRichText returns true if given Markdown AST node is convertable directly into notion RichText
 func IsConvertableToRichText(node mdast.Node) bool {
 	switch node.(type) {
-	case *mdast.Heading, *mdast.Text,
-		*mdast.FencedCodeBlock, *mdast.ListItem, *mdast.AutoLink, *mdast.Link,
+	case *mdast.Text,
+		*mdast.CodeBlock, *mdast.FencedCodeBlock,
+		*mdast.ListItem, *mdast.AutoLink, *mdast.Link,
 		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph,
 		*mdast.Emphasis, *mdastx.Strikethrough, *mdast.CodeSpan:
 		return true
 	case *mdast.TextBlock:
 		if node.FirstChild() != nil && node.FirstChild().Kind() == mdastx.KindTaskCheckBox {
+			// NOCOV??
 			return false
 		}
 		return true
@@ -114,18 +119,12 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			return nt.NewTextRichText(string(v.Value(source)))
 		})
-	case *mdast.TextBlock:
+
+	case *mdast.FencedCodeBlock, *mdast.CodeBlock:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			return nt.NewTextRichText(string(contentFromLines(v, source)))
 		})
-	case *mdast.FencedCodeBlock:
-		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			return nt.NewTextRichText(string(contentFromLines(v, source)))
-		})
-	case *mdast.ListItem:
-		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			return nt.NewTextRichText(string(contentFromLines(v, source)))
-		})
+
 	case *mdast.AutoLink:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			link := string(v.URL(source))
@@ -147,6 +146,17 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 			)
 			return nt.NewTextRichText(content)
 		})
+	// Not used cases (todo: delete?)
+
+	case *mdast.TextBlock:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return nt.NewTextRichText(string(contentFromLines(v, source)))
+		})
+	case *mdast.ListItem:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return nt.NewTextRichText(string(contentFromLines(v, source)))
+		})
+
 	default:
 		// Use IsConvertableToRichText to prevent such panics
 		panic("ToRichText: unsupported markdown node type " + node.Kind().String())
@@ -182,12 +192,12 @@ func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, bl
 
 	// Final point: If no has no children, try to get its content via Lines, Segment, etc
 	if node.ChildCount() == 0 {
-		if IsConvertableToRichText(node) {
-			richText := ToRichText(node)
-			return NtRichTextBuilders{richText}, nil
-		}
-
-		return
+		//if IsConvertableToRichText(node) {
+		richText := ToRichText(node)
+		return NtRichTextBuilders{richText}, nil
+		//}
+		//
+		//return
 	}
 
 	richTexts = make(NtRichTextBuilders, 0)
@@ -270,20 +280,20 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 				node.(*mdast.Heading).Level, // nolint:errcheck
 			)
 		})}
+	case mdast.KindCodeBlock:
+		return NtBlockBuilders{
+			NewNtBlockBuilder(func(source []byte) nt.Block {
+				return nt.NewCodeBlock(nt.Code{
+					RichText: flattenRichTexts(node).Build(source),
+				})
+			}),
+		}
 	case mdast.KindFencedCodeBlock:
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
 				codeBlock := node.(*mdast.FencedCodeBlock) // nolint:errcheck
 				return nt.NewCodeBlock(nt.Code{
 					Language: sanitizeBlockLanguage(string(codeBlock.Language(source))),
-					RichText: flattenRichTexts(node).Build(source),
-				})
-			}),
-		}
-	case mdast.KindHTMLBlock:
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return nt.NewParagraphBlock(nt.Paragraph{
 					RichText: flattenRichTexts(node).Build(source),
 				})
 			}),
@@ -379,6 +389,17 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 				return tableBlock
 			}),
 		}
+
+		// not yet used cases (todo delete?)
+	case mdast.KindHTMLBlock:
+		// For now we just convert it to a paragraph with raw HTML there
+		return NtBlockBuilders{
+			NewNtBlockBuilder(func(source []byte) nt.Block {
+				return nt.NewParagraphBlock(nt.Paragraph{
+					RichText: flattenRichTexts(node).Build(source),
+				})
+			}),
+		}
 	}
 
 	if node.ChildCount() == 0 {
@@ -406,23 +427,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 			}),
 		}
 	case mdast.KindBlockquote:
-		innerBlocks := make(NtBlockBuilders, 0)
-		innerTexts := make(NtRichTextBuilders, 0)
-		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			if IsConvertableToRichText(child) {
-				innerTexts = append(innerTexts, flattenRichTexts(child)...)
-			} else if IsConvertableToBlock(child) {
-				innerBlocks = append(innerBlocks, ToBlocks(child)...)
-			}
-		}
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return nt.NewQuoteBlock(nt.Quote{
-					RichText: innerTexts.Build(source),
-					Children: innerBlocks.Build(source),
-				})
-			}),
-		}
+		return handleBlockquote(node)
 	case mdast.KindList:
 		return handleList(node)
 	case mdast.KindTextBlock:
@@ -440,6 +445,36 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	}
 
 	panic(fmt.Sprintf("unhandled node type: %s", node.Kind().String()))
+}
+
+func handleBlockquote(node mdast.Node) NtBlockBuilders {
+	// TODO: handle blockquotes better
+	// Issue is that Notion's Blockquote requires a rich-text content and it can't be a heading
+	// so if you have markdown blockquote with first heading as a child, you'll get it in notion after the richtext content
+	// As idea? maybe introduce an option to convert complex quotes into notion callouts?
+	// For now we keep the weird behavior
+	innerTexts := make(NtRichTextBuilders, 0)
+	innerBlocks := make(NtBlockBuilders, 0)
+	if len(innerTexts) == 0 {
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			// if it's convertable to rich text and we didn't handle any blocks yet, we're OK to flatten
+			// as soon as we met an inner block, all further children are considered as blocks as well
+			if IsConvertableToRichText(child) && len(innerBlocks) == 0 {
+				innerTexts = append(innerTexts, flattenRichTexts(child)...)
+			} else {
+				innerBlocks = append(innerBlocks, ToBlocks(child)...)
+			}
+		}
+	}
+
+	return NtBlockBuilders{
+		NewNtBlockBuilder(func(source []byte) nt.Block {
+			return nt.NewQuoteBlock(nt.Quote{
+				RichText: innerTexts.Build(source),
+				Children: innerBlocks.Build(source),
+			})
+		}),
+	}
 }
 
 // handleList processes a markdown list and returns appropriate Notion blocks
