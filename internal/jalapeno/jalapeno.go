@@ -75,7 +75,9 @@ func PrepareNotionPageProperties(blocks nt.Blocks) (nt.Blocks, nt.Properties) {
 // If not, it means it might be converted into RichText directly (and used as contents of Paragraph block for example)
 func IsConvertableToBlock(node mdast.Node) bool {
 	switch node.(type) {
-	case *mdast.Image, *mdastx.TaskCheckBox:
+	// TODO(amberpixels): think of the place in the code of this function
+	// that's about a BLOCK being found as child in other BLOCK
+	case *mdast.Image, *mdastx.TaskCheckBox, *mdast.Blockquote:
 		return true
 	default:
 		return false
@@ -454,10 +456,28 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 				})
 			}),
 		}
+	case mdast.KindBlockquote:
+		innerBlocks := make(NtBlockBuilders, 0)
+		innerTexts := make(NtRichTextBuilders, 0)
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			if IsConvertableToRichText(child) {
+				innerTexts = append(innerTexts, flattenRichTexts(child)...)
+			} else if IsConvertableToBlock(child) {
+				innerBlocks = append(innerBlocks, ToBlocks(child)...)
+			}
+		}
+		return NtBlockBuilders{
+			NewNtBlockBuilder(func(source []byte) nt.Block {
+				return nt.NewQuoteBlock(nt.Quote{
+					RichText: innerTexts.Build(source),
+					Children: innerBlocks.Build(source),
+				})
+			}),
+		}
 	case mdast.KindList:
 		return handleList(node)
 	case mdast.KindTextBlock:
-	case mdast.KindBlockquote:
+		//case mdast.KindBlockquote:
 		richTexts, blocks := flatten(node)
 
 		return NtBlockBuilders{

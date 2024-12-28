@@ -763,5 +763,40 @@ func main() {
 			}),
 		})
 
+	// --------------
+	// --- QUOTES ---
+	// --------------
+
+	f("Simple Block Quote", `> This is a block quote`,
+		nt.Blocks{
+			nt.NewQuoteBlock(nt.Quote{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("This is a block"),
+					*nt.NewTextRichText(" quote"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Nested Block Quotes", `> This is a block quote
+> > This is a nested block quote`,
+		nt.Blocks{
+			nt.NewQuoteBlock(nt.Quote{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("This is a block"),
+					*nt.NewTextRichText(" quote"),
+				},
+				Children: nt.Blocks{
+					nt.NewQuoteBlock(nt.Quote{
+						RichText: []nt.RichText{
+							*nt.NewTextRichText("This is a nested block"),
+							*nt.NewTextRichText(" quote"),
+						},
+						Children: nt.Blocks{},
+					}),
+				},
+			}),
+		})
+
 	run()
 }
