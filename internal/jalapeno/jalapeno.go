@@ -158,60 +158,6 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 func flattenRichTexts(node mdast.Node) NtRichTextBuilders {
 	t, _ := flatten(node)
 	return t
-
-	//// Final point: If no has no children, try to get its content via Lines, Segment, etc
-	//if node.ChildCount() == 0 {
-	//	return NtRichTextBuilders{ToRichText(node)}
-	//}
-	//
-	//richTexts := make(NtRichTextBuilders, 0)
-	//
-	//// If has children: recursively iterate and flatten results
-	//for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-	//
-	//	// Special handling:
-	//	switch child.Kind() {
-	//	case mdast.KindImage, mdastx.KindTaskCheckBox:
-	//		panic(fmt.Sprintf("flattenedRichTexts is not possible for %s. nestedObjects must be use", child.Kind()))
-	//	}
-	//
-	//	deeperRichTexts := flattenRichTexts(child)
-	//	DebugRichTexts(deeperRichTexts, fmt.Sprintf("   --> Flattening children of %s", child.Kind()))
-	//
-	//	// Special handling depending on the type of the child
-	//	switch v := child.(type) {
-	//	case *mdastx.Strikethrough:
-	//		for i := range deeperRichTexts {
-	//			deeperRichTexts[i].DecorateWith(strikethroughDecorator)
-	//		}
-	//	case *mdast.Emphasis:
-	//		for i := range deeperRichTexts {
-	//			if v.Level == 1 {
-	//				deeperRichTexts[i].DecorateWith(italicDecorator)
-	//			} else {
-	//				deeperRichTexts[i].DecorateWith(boldDecorator)
-	//			}
-	//		}
-	//	case *mdast.CodeSpan:
-	//		// Adding t.Annotations = code:true for each child
-	//		for i := range deeperRichTexts {
-	//			deeperRichTexts[i].DecorateWith(codeDecorator)
-	//		}
-	//
-	//	case *mdast.Link:
-	//		for i := range deeperRichTexts {
-	//			deeperRichTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
-	//		}
-	//
-	//	case *mdast.Text, *mdast.TextBlock, *mdast.RawHTML, *mdast.AutoLink:
-	//	default:
-	//		slog.Warn(fmt.Sprintf("Unhandled child's type: %s", v.Kind().String()))
-	//	}
-	//
-	//	richTexts = append(richTexts, deeperRichTexts...)
-	//}
-	//
-	//return richTexts
 }
 
 // flatten flattens given MD ast node into series of Notion RichTexts and (optionally) Blocks.

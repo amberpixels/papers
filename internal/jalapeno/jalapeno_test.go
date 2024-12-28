@@ -836,5 +836,13 @@ func main() {
 			}),
 		})
 
+	// --------------
+	// --- MISC -----
+	// --------------
+
+	f("Horizontal Rule", `---`, nt.Blocks{
+		nt.NewDividerBlock(),
+	})
+
 	run()
 }
