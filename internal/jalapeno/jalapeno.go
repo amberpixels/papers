@@ -304,6 +304,9 @@ func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, bl
 
 // nolint: gocyclo // WILL be OK after refactor
 func ToBlocks(node mdast.Node) NtBlockBuilders {
+	// Thoughts: First switch is used when ToBlocks was called from children handling (recursion)
+	// can we optimize it somehow?
+
 	// Pure flattening first:
 	switch node.Kind() {
 	case mdast.KindHeading:
@@ -347,11 +350,11 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 			}),
 		}
 	case mdast.KindImage:
-		// make a copy of the rich texts inside, as they will become Image Caption
-		// but we nil-ify the original rich texts as to prevent them from duplicating
-		//captionRichTexts := append(NtRichTextBuilders{}, deeperRichTexts...)
-		//deeperRichTexts = nil
-		// TODO caption??
+		captionRichTexts := NtRichTextBuilders{}
+		if child := node.FirstChild(); child != nil {
+			captionRichTexts = flattenRichTexts(child)
+		}
+
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
 				return nt.NewImageBlock(nt.Image{
@@ -359,7 +362,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 					External: &nt.FileObject{
 						URL: string(node.(*mdast.Image).Destination), // nolint:errcheck
 					},
-					//Caption: captionRichTexts.Build(source),
+					Caption: captionRichTexts.Build(source),
 				})
 			}),
 		}

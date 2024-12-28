@@ -798,5 +798,43 @@ func main() {
 			}),
 		})
 
+	// --------------
+	// --- IMAGES ---
+	// --------------
+
+	f("Image Without Caption", `![](https://example.com/image.png)`,
+		nt.Blocks{
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{},
+				Children: nt.Blocks{
+					nt.NewImageBlock(nt.Image{
+						Type: "external",
+						External: &nt.FileObject{
+							URL: "https://example.com/image.png",
+						},
+						Caption: []nt.RichText{}, // No caption
+					}),
+				},
+			}),
+		})
+
+	f("Image With Caption", `![Alt text](https://example.com/image.png)`,
+		nt.Blocks{
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{},
+				Children: nt.Blocks{
+					nt.NewImageBlock(nt.Image{
+						Type: "external",
+						External: &nt.FileObject{
+							URL: "https://example.com/image.png",
+						},
+						Caption: []nt.RichText{
+							*nt.NewTextRichText("Alt text"),
+						},
+					}),
+				},
+			}),
+		})
+
 	run()
 }
