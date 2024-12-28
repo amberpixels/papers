@@ -18,6 +18,8 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
     - Headings
     - Emphasis (bold, italic, strikethrough)
     - Lists (bulleted and numbered)
+    - Task lists
+    - Nested lists
     - Code blocks
     - Inline code
     - Links and autolinks
@@ -36,8 +38,6 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
     - Advanced tables (tables + things inside)
     - Footnotes
     - Definition lists
-    - Task lists
-    - Nested lists
     - Escape characters
 
 - **HTML Support:** Only `<br>` is supported. Other HTML elements are not parsed or converted.
@@ -47,9 +47,9 @@ into Notion blocks via the [Notion API](https://developers.notion.com/).
 - [x] Add support for tables
   - [ ] Add support for nested things inside tables
 - [x] Add support for blockquotes
-- [ ] Add horizontal rules
+- [x] Add horizontal rules
 - [ ] Handle footnotes and definition lists
-- [ ] Implement task lists and nested lists
+- [x] Implement task lists and nested lists
 - [ ] Improve HTML support
 - [ ] Refactor and move `jalapeno` to `pkg` for independent use
 
