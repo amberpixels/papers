@@ -28,15 +28,16 @@ jobs:
       - name: Run tidy
         run: make tidy
 
+      - name: Run lint install
+        run: make lint-install
+
+
       - name: Debug golangci-lint config
         run: |
           pwd
           ls -la
           cat .golangci.yml
-          $(shell which golangci-lint) --version
-
-      - name: Run lint install
-        run: make lint-install
+          golangci-lint --version
 
       - name: Run lint
         run: make lint
