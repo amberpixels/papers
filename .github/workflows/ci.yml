@@ -33,7 +33,7 @@ jobs:
           pwd
           ls -la
           cat .golangci.yml
-          golangci-lint --version
+          $(shell which golangci-lint) --version
 
       - name: Run lint install
         run: make lint-install
