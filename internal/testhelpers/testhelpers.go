@@ -61,7 +61,7 @@ func GenerateCases[T any, A any](t *testing.T, assert A) (T, T, T, func()) {
 			return nil
 		})
 
-		return f.Interface().(T)
+		return f.Interface().(T) // nolint:errcheck
 	}
 
 	run := func() {
