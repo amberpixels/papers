@@ -28,6 +28,9 @@ jobs:
       - name: Run tidy
         run: make tidy
 
+      - name: Run lint install
+        run: make lint-install
+
       - name: Run lint
         run: make lint
 
