@@ -11,9 +11,6 @@ import (
 	mdtext "github.com/yuin/goldmark/text"
 )
 
-// TODO: weird stuff with blockquotes: E.g. when markdown blockquote has a first heading child, it's shown with an
-// empty rich-text contents then. So, it must have at least some basic text content (we keep it empty for this)
-
 // Parser stands for an instance
 type Parser struct {
 	mdParser md.Markdown
@@ -153,16 +150,6 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 				string(contentFromLines(v, source)),
 			)
 			return nt.NewTextRichText(content)
-		})
-	// Not used cases (todo: delete?)
-
-	case *mdast.TextBlock:
-		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			return nt.NewTextRichText(string(contentFromLines(v, source)))
-		})
-	case *mdast.ListItem:
-		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			return nt.NewTextRichText(string(contentFromLines(v, source)))
 		})
 
 	default:
