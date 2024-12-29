@@ -168,6 +168,7 @@ func TestParser_ParseBlocks(t *testing.T) {
 	// -------------------
 
 	f("Empty paragram (with whitespace)", " \t\t ", nt.Blocks{})
+
 	f("Empty paragram (multiline with whitespace)", " \t\n\n\t ", nt.Blocks{})
 
 	f("Simple oneline paragraph", `Hello Foobar`, nt.Blocks{
@@ -350,22 +351,23 @@ and the third.
 	f("Formatting links", `
 I love supporting the **[EFF](https://eff.org)**.
 This is the *[Markdown Guide](https://www.markdownguide.org)*.
-See the section on [`+"`code`"+`](#code).`, nt.Blocks{
-		nt.NewParagraphBlock(nt.Paragraph{
-			RichText: []nt.RichText{
-				*nt.NewTextRichText("I love supporting the "),
-				*nt.NewLinkRichText("EFF", "https://eff.org").AnnotateBold(),
-				*nt.NewTextRichText("."),
-				*nt.NewTextRichText("This is the "),
-				*nt.NewLinkRichText("Markdown Guide", "https://www.markdownguide.org").AnnotateItalic(),
-				*nt.NewTextRichText("."),
-				*nt.NewTextRichText("See the section on "),
-				*nt.NewLinkRichText("code", "#code").AnnotateCode(),
-				*nt.NewTextRichText("."),
-			},
-			Children: nt.Blocks{},
-		}),
-	})
+See the section on [`+"`code`"+`](#code).`,
+		nt.Blocks{
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("I love supporting the "),
+					*nt.NewLinkRichText("EFF", "https://eff.org").AnnotateBold(),
+					*nt.NewTextRichText("."),
+					*nt.NewTextRichText("This is the "),
+					*nt.NewLinkRichText("Markdown Guide", "https://www.markdownguide.org").AnnotateItalic(),
+					*nt.NewTextRichText("."),
+					*nt.NewTextRichText("See the section on "),
+					*nt.NewLinkRichText("code", "#code").AnnotateCode(),
+					*nt.NewTextRichText("."),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
 
 	// --------------
 	// --- LISTS ----
@@ -420,6 +422,33 @@ See the section on [`+"`code`"+`](#code).`, nt.Blocks{
 				RichText: []nt.RichText{
 					*nt.NewTextRichText("Item"),
 					*nt.NewTextRichText(" 3"),
+				},
+				Children: nt.Blocks{},
+			}),
+		})
+
+	f("Simple Numbered List followed by a paragraph", `Hello my list:
+1. Item 1
+2. Item 2`,
+		nt.Blocks{ // it's paragraph + list but not nested list
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Hello my"),
+					*nt.NewTextRichText(" list:"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewNumberedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 1"),
+				},
+				Children: nt.Blocks{},
+			}),
+			nt.NewNumberedListItemBlock(nt.ListItem{
+				RichText: []nt.RichText{
+					*nt.NewTextRichText("Item"),
+					*nt.NewTextRichText(" 2"),
 				},
 				Children: nt.Blocks{},
 			}),
@@ -1072,6 +1101,15 @@ func main() {
 						},
 					}),
 				},
+			}),
+		})
+
+	// TODO: doesn't work yet
+	xf("Image with URL caption", `[![Foobar](https://pkg.go.dev/badge/github.com/yuin/goldmark.svg)](https://google.com)`,
+		nt.Blocks{
+			nt.NewParagraphBlock(nt.Paragraph{
+				RichText: []nt.RichText{},
+				Children: nt.Blocks{},
 			}),
 		})
 

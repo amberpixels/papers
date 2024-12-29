@@ -3,7 +3,6 @@ package jalapeno
 
 import (
 	"fmt"
-	"log/slog"
 
 	nt "github.com/jomei/notionapi"
 	md "github.com/yuin/goldmark"
@@ -74,27 +73,20 @@ func PrepareNotionPageProperties(blocks nt.Blocks) (nt.Blocks, nt.Properties) {
 	}
 }
 
-// IsConvertableToBlock returns if given Markdown AST node is convertable to notionapi Block
-// If not, it means it might be converted into RichText directly (and used as contents of Paragraph block for example)
-func IsConvertableToBlock(node mdast.Node) bool {
-	switch node.(type) {
-	// TODO(amberpixels): think of the place in the code of this function
-	// that's about a BLOCK being found as child in other BLOCK
-	case *mdast.Image, *mdastx.TaskCheckBox, *mdast.Blockquote:
-		return true
-	default:
-		return false // NOCOV
-	}
-}
-
 // IsConvertableToRichText returns true if given Markdown AST node is convertable directly into notion RichText
 func IsConvertableToRichText(node mdast.Node) bool {
 	switch node.(type) {
 	case *mdast.Text,
 		*mdast.CodeBlock, *mdast.FencedCodeBlock,
-		*mdast.ListItem, *mdast.AutoLink, *mdast.Link,
+		*mdast.ListItem, *mdast.AutoLink,
 		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph,
 		*mdast.Emphasis, *mdastx.Strikethrough, *mdast.CodeSpan:
+		return true
+	case *mdast.Link:
+		// TODO: not yet working in full manner
+		if node.FirstChild() != nil && node.FirstChild().Kind() == mdast.KindImage {
+			return false
+		}
 		return true
 	case *mdast.TextBlock:
 		if node.FirstChild() != nil && node.FirstChild().Kind() == mdastx.KindTaskCheckBox {
@@ -105,6 +97,24 @@ func IsConvertableToRichText(node mdast.Node) bool {
 	default:
 		return false
 	}
+}
+
+// ExtractRichTexts extract all richtexts for a given node
+// It does work ONLY for nodes that can be handled purely via Notion's RichTexts
+// Use HandledViaRichTexts to check it.
+func ExtractRichTexts(node mdast.Node) NtRichTextBuilders {
+	if node.ChildCount() == 0 {
+		return NtRichTextBuilders{ToRichText(node)}
+	}
+
+	richTexts := make(NtRichTextBuilders, 0)
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		richTexts = append(richTexts, decorateRichTexts(
+			node,
+			ExtractRichTexts(child),
+		)...)
+	}
+	return richTexts
 }
 
 // ToRichText returns a NtRichTextBuilder for a given node
@@ -119,12 +129,10 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			return nt.NewTextRichText(string(v.Value(source)))
 		})
-
 	case *mdast.FencedCodeBlock, *mdast.CodeBlock:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			return nt.NewTextRichText(string(contentFromLines(v, source)))
 		})
-
 	case *mdast.AutoLink:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			link := string(v.URL(source))
@@ -158,107 +166,12 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 		})
 
 	default:
-		// Use IsConvertableToRichText to prevent such panics
-		panic("ToRichText: unsupported markdown node type " + node.Kind().String())
+		return nil
 	}
 }
 
-// flattenRichTexts flattens given MD as node into series of Notion RichTexts
-// Should be only used when we know that we can't build a nested block structure with the given node
-func flattenRichTexts(node mdast.Node) NtRichTextBuilders {
-	t, _ := flatten(node)
-	return t
-}
-
-// flatten flattens given MD ast node into series of Notion RichTexts and (optionally) Blocks.
-// RichTexts and Blocks are returned as builders, so later they can be built with given source bytes.
-// Flattening is a required process because Markdown deeply nested can be shown as flat notion blocks or rich texts.
-//
-// Examples:
-//
-//   - Markdown's Header (with all its deep children) can only be flat Notion's Header with rich texts inside. /
-//
-//   - Markdown's Image (with possible children in its title) can only be Notion's Block
-//
-// TODO(amberpixels): consider refactoring as this function should be split into two: on for rich text and one for block
-//   - this can be achieved if we have a knowledge on how each mdast.Node should be converted.
-//
-// nolint: gocyclo // Will be OK after refactor
-func flatten(node mdast.Node, levelArg ...int) (richTexts NtRichTextBuilders, blocks NtBlockBuilders) {
-	var level int
-	if len(levelArg) > 0 {
-		level = levelArg[0]
-	}
-
-	// Final point: If no has no children, try to get its content via Lines, Segment, etc
-	if node.ChildCount() == 0 {
-		//if IsConvertableToRichText(node) {
-		richText := ToRichText(node)
-		return NtRichTextBuilders{richText}, nil
-		//}
-		//
-		//return
-	}
-
-	richTexts = make(NtRichTextBuilders, 0)
-	blocks = make(NtBlockBuilders, 0)
-
-	// If has children: recursively iterate and flatten results
-	iSibling := -1
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		iSibling++
-
-		// Rest are fine: simply flatten and maybe decorate
-
-		// Flatten children of current child
-		tabLog(level, fmt.Sprintf("flattening %d general sibling", iSibling))
-
-		deeperRichTexts, deeperBlocks := flatten(child, level+1)
-
-		DebugRichTexts(deeperRichTexts, fmt.Sprintf("Flattening children of %s", child.Kind()))
-
-		// Special handling depending on the type of the child
-		switch v := node.(type) {
-		case *mdastx.Strikethrough:
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(strikethroughDecorator)
-			}
-		case *mdast.Emphasis:
-			for i := range deeperRichTexts {
-				if v.Level == 1 {
-					deeperRichTexts[i].DecorateWith(italicDecorator)
-				} else {
-					deeperRichTexts[i].DecorateWith(boldDecorator)
-				}
-			}
-		case *mdast.CodeSpan:
-			// Adding t.Annotations = code:true for each child
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(codeDecorator)
-			}
-
-		case *mdast.Link:
-			for i := range deeperRichTexts {
-				deeperRichTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
-			}
-
-		case *mdast.Text, *mdast.TextBlock, *mdast.RawHTML, *mdast.AutoLink:
-		// we're fine here doing nothing
-		case *mdast.Image, *mdastx.TaskCheckBox:
-			// something is really broken. First case should have handled this already
-			panic("something is really broken")
-		default:
-			slog.Warn(fmt.Sprintf("Unhandled child's type: %s", v.Kind().String()))
-		}
-
-		blocks = append(blocks, deeperBlocks...)
-		richTexts = append(richTexts, deeperRichTexts...)
-	}
-
-	return richTexts, blocks
-}
-
-// nolint: gocyclo // WILL be OK after refactor
+// ToBlocks converts given MD ast node into series of Notion Blocks
+// nolint: gocyclo // Will be OK after further refactor
 func ToBlocks(node mdast.Node) NtBlockBuilders {
 	// Thoughts: First switch is used when ToBlocks was called from children handling (recursion)
 	// can we optimize it somehow?
@@ -266,40 +179,23 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	// Pure flattening first:
 	switch node.Kind() {
 	case mdast.KindHeading:
-		// Although in MD mdast.Heading can have children,
-		// In notion it's a flattened list of RichTexts
-		// Edge case: Notion's heading.collapseable=true (that supports children) is not supported yet
-		//            TODO(amberpixels): support collapsable headings with children
-		richTexts := flattenRichTexts(node)
-
-		DebugRichTexts(richTexts, "Heading")
-
-		return NtBlockBuilders{NewNtBlockBuilder(func(source []byte) nt.Block {
-			return nt.NewHeadingBlock(
-				nt.Heading{RichText: richTexts.Build(source)},
-				node.(*mdast.Heading).Level, // nolint:errcheck
-			)
-		})}
-	case mdast.KindCodeBlock:
+		return handleHeading(node)
+	case mdast.KindCodeBlock, mdast.KindFencedCodeBlock:
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
+				var language string
+				if codeBlock, ok := node.(*mdast.FencedCodeBlock); ok {
+					language = sanitizeBlockLanguage(string(codeBlock.Language(source)))
+				}
+				richTexts := ExtractRichTexts(node)
+
 				return nt.NewCodeBlock(nt.Code{
-					RichText: flattenRichTexts(node).Build(source),
-				})
-			}),
-		}
-	case mdast.KindFencedCodeBlock:
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				codeBlock := node.(*mdast.FencedCodeBlock) // nolint:errcheck
-				return nt.NewCodeBlock(nt.Code{
-					Language: sanitizeBlockLanguage(string(codeBlock.Language(source))),
-					RichText: flattenRichTexts(node).Build(source),
+					RichText: richTexts.Build(source),
+					Language: language,
 				})
 			}),
 		}
 	case mdast.KindThematicBreak:
-		// Create a Notion Divider Block
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(_ []byte) nt.Block {
 				return nt.NewDividerBlock()
@@ -308,7 +204,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	case mdast.KindImage:
 		captionRichTexts := NtRichTextBuilders{}
 		if child := node.FirstChild(); child != nil {
-			captionRichTexts = flattenRichTexts(child)
+			captionRichTexts = ExtractRichTexts(child)
 		}
 
 		return NtBlockBuilders{
@@ -323,83 +219,9 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 			}),
 		}
 	case mdastx.KindTable: // Use the extension AST for the Table node
-		table := node.(*mdastx.Table) // nolint:errcheck
-
-		// Collect headers and rows
-		headers := make([]NtRichTextBuilders, 0)
-		rows := make([][]NtRichTextBuilders, 0)
-
-		// Iterate over the table's children to extract headers and rows
-		// TODO: move this deeper, as tables can be not first-level as well
-		for tr := table.FirstChild(); tr != nil; tr = tr.NextSibling() {
-			switch tr.Kind() {
-			case mdastx.KindTableHeader:
-				// Collect headers
-				for th := tr.FirstChild(); th != nil; th = th.NextSibling() {
-					richTexts := flattenRichTexts(th)
-					headers = append(headers, richTexts)
-				}
-
-			case mdastx.KindTableRow:
-				// Collect each row's cells
-				row := make([]NtRichTextBuilders, 0)
-				for td := tr.FirstChild(); td != nil; td = td.NextSibling() {
-					richTexts := flattenRichTexts(td)
-					row = append(row, richTexts)
-				}
-				rows = append(rows, row)
-			}
-		}
-
-		// Create Notion table block
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				// Construct table block
-				tableBlock := nt.NewTableBlock(nt.Table{
-					TableWidth:      len(headers),
-					HasColumnHeader: true,
-					Children:        nt.Blocks{}, // will be populated below
-
-					//HasRowHeader:  false, // TODO(amberpixels) is this possible to be known from markdown?
-				})
-
-				// Populate header row
-				if len(headers) > 0 {
-					headerRow := nt.TableRow{
-						Cells: make([][]nt.RichText, len(headers)),
-					}
-					for i, header := range headers {
-						headerRow.Cells[i] = header.Build(source)
-					}
-
-					tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(headerRow))
-				}
-
-				// Populate the rest of the rows
-				for _, row := range rows {
-					tableRow := nt.TableRow{
-						Cells: make([][]nt.RichText, len(row)),
-					}
-					for i, cell := range row {
-						tableRow.Cells[i] = cell.Build(source)
-					}
-					tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(tableRow))
-				}
-
-				return tableBlock
-			}),
-		}
-
-		// not yet used cases (todo delete?)
+		return handleTable(node)
 	case mdast.KindHTMLBlock:
-		// For now we just convert it to a paragraph with raw HTML there
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return nt.NewParagraphBlock(nt.Paragraph{
-					RichText: flattenRichTexts(node).Build(source),
-				})
-			}),
-		}
+		return handleHTMLBlock(node)
 	}
 
 	if node.ChildCount() == 0 {
@@ -409,12 +231,15 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	// Nested blocks are required:
 	switch node.Kind() {
 	case mdast.KindParagraph:
-		innerBlocks := make(NtBlockBuilders, 0)
+		// similar to BlockQuote - should be handled in a shared way
 		innerTexts := make(NtRichTextBuilders, 0)
+		innerBlocks := make(NtBlockBuilders, 0)
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			if IsConvertableToRichText(child) {
-				innerTexts = append(innerTexts, flattenRichTexts(child)...)
-			} else if IsConvertableToBlock(child) {
+			// if it's convertable to rich text and we didn't handle any blocks yet, we're OK to flatten
+			// as soon as we met an inner block, all further children are considered as blocks as well
+			if IsConvertableToRichText(child) && len(innerBlocks) == 0 {
+				innerTexts = append(innerTexts, ExtractRichTexts(child)...)
+			} else {
 				innerBlocks = append(innerBlocks, ToBlocks(child)...)
 			}
 		}
@@ -431,14 +256,11 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	case mdast.KindList:
 		return handleList(node)
 	case mdast.KindTextBlock:
-		//case mdast.KindBlockquote:
-		richTexts, blocks := flatten(node)
-
+		richTexts := ExtractRichTexts(node)
 		return NtBlockBuilders{
 			NewNtBlockBuilder(func(source []byte) nt.Block {
 				return nt.NewQuoteBlock(nt.Quote{
 					RichText: richTexts.Build(source),
-					Children: blocks.Build(source),
 				})
 			}),
 		}
@@ -447,23 +269,127 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 	panic(fmt.Sprintf("unhandled node type: %s", node.Kind().String()))
 }
 
+// handleHeading handles custom logic of Markdown->Notion Headings
+// Although in MD mdast.Heading can have children,
+// In notion it's a flattened list of RichTexts
+// Edge case: Notion's heading.collapseable=true (that supports children) is not supported yet
+// TODO(amberpixels): support collapsable headings with children
+func handleHeading(node mdast.Node) NtBlockBuilders {
+	heading := node.(*mdast.Heading) // nolint:errcheck
+	headingLevel := heading.Level
+	richTexts := ExtractRichTexts(node)
+
+	return NtBlockBuilders{NewNtBlockBuilder(func(source []byte) nt.Block {
+		return nt.NewHeadingBlock(
+			nt.Heading{RichText: richTexts.Build(source)},
+			headingLevel,
+		)
+	})}
+}
+
+// handleTable handles custom logic of Markdown->Notion tables
+// Nothing special here, just custom defining of rows, headers, and cells
+func handleTable(node mdast.Node) NtBlockBuilders {
+	table := node.(*mdastx.Table) // nolint:errcheck
+
+	// Collect headers and rows
+	headers := make([]NtRichTextBuilders, 0)
+	rows := make([][]NtRichTextBuilders, 0)
+
+	// TODO: support recursive tables?
+
+	// Iterate over the table's children to extract headers and rows
+	for tr := table.FirstChild(); tr != nil; tr = tr.NextSibling() {
+		switch tr.Kind() {
+		case mdastx.KindTableHeader:
+			// Collect headers
+			for th := tr.FirstChild(); th != nil; th = th.NextSibling() {
+				// TODO: is it possible in the Header to have nested blocks?
+				headers = append(headers, ExtractRichTexts(th))
+			}
+
+		case mdastx.KindTableRow:
+			// Collect each row's cells
+			row := make([]NtRichTextBuilders, 0)
+			for td := tr.FirstChild(); td != nil; td = td.NextSibling() {
+				// TODO: we need to handle any nested blocks inside tables as well
+				row = append(row, ExtractRichTexts(td))
+			}
+			rows = append(rows, row)
+		}
+	}
+
+	// Create Notion table block
+	return NtBlockBuilders{
+		NewNtBlockBuilder(func(source []byte) nt.Block {
+			// Construct table block
+			tableBlock := nt.NewTableBlock(nt.Table{
+				TableWidth:      len(headers),
+				HasColumnHeader: true,
+				Children:        nt.Blocks{}, // will be populated below
+
+				//HasRowHeader:  false, // TODO(amberpixels) is this possible to be known from markdown?
+			})
+
+			// Populate header row
+			if len(headers) > 0 {
+				headerRow := nt.TableRow{
+					Cells: make([][]nt.RichText, len(headers)),
+				}
+				for i, header := range headers {
+					headerRow.Cells[i] = header.Build(source)
+				}
+
+				tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(headerRow))
+			}
+
+			// Populate the rest of the rows
+			for _, row := range rows {
+				tableRow := nt.TableRow{
+					Cells: make([][]nt.RichText, len(row)),
+				}
+				for i, cell := range row {
+					tableRow.Cells[i] = cell.Build(source)
+				}
+				tableBlock.Table.Children = append(tableBlock.Table.Children, nt.NewTableRowBlock(tableRow))
+			}
+
+			return tableBlock
+		}),
+	}
+}
+
+// handleHTMLBlock handles custom logic of Markdown->Notion HTML blocks
+// Notion doesn't support HTML in rich-text so we have to convert it manually into Notion blocks
+// For now we just keep RAW html (no parsing), but it should be fixed
+// TODO: support HTML, at least paragraph, better lists + tables?
+func handleHTMLBlock(node mdast.Node) NtBlockBuilders {
+	richTexts := ExtractRichTexts(node)
+
+	return NtBlockBuilders{
+		NewNtBlockBuilder(func(source []byte) nt.Block {
+			return nt.NewParagraphBlock(nt.Paragraph{
+				RichText: richTexts.Build(source),
+			})
+		}),
+	}
+}
+
+// handleBlockquote handles custom logic of Markdown->Notion Blockquotes
+// Notion's Blockquote is a container that has both mandatory rich-text content and children
+// Mandatory rich-text makes an issue if in Markdown you had a blockquote with a heading as a first child
+// (As heading is a block, can't be fully represented in rich-text)
 func handleBlockquote(node mdast.Node) NtBlockBuilders {
 	// TODO: handle blockquotes better
-	// Issue is that Notion's Blockquote requires a rich-text content and it can't be a heading
-	// so if you have markdown blockquote with first heading as a child, you'll get it in notion after the richtext content
-	// As idea? maybe introduce an option to convert complex quotes into notion callouts?
-	// For now we keep the weird behavior
 	innerTexts := make(NtRichTextBuilders, 0)
 	innerBlocks := make(NtBlockBuilders, 0)
-	if len(innerTexts) == 0 {
-		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			// if it's convertable to rich text and we didn't handle any blocks yet, we're OK to flatten
-			// as soon as we met an inner block, all further children are considered as blocks as well
-			if IsConvertableToRichText(child) && len(innerBlocks) == 0 {
-				innerTexts = append(innerTexts, flattenRichTexts(child)...)
-			} else {
-				innerBlocks = append(innerBlocks, ToBlocks(child)...)
-			}
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		// if it's convertable to rich text and we didn't handle any blocks yet, we're OK to flatten
+		// as soon as we met an inner block, all further children are considered as blocks as well
+		if IsConvertableToRichText(child) && len(innerBlocks) == 0 {
+			innerTexts = append(innerTexts, ExtractRichTexts(child)...)
+		} else {
+			innerBlocks = append(innerBlocks, ToBlocks(child)...)
 		}
 	}
 
@@ -479,10 +405,7 @@ func handleBlockquote(node mdast.Node) NtBlockBuilders {
 
 // handleList processes a markdown list and returns appropriate Notion blocks
 func handleList(node mdast.Node) NtBlockBuilders {
-	list, ok := node.(*mdast.List)
-	if !ok {
-		return nil
-	}
+	list := node.(*mdast.List) // nolint:errcheck
 
 	// Check if list is bulleted or numbered
 	var bulletted bool
@@ -508,7 +431,7 @@ func handleListItem(node mdast.Node, bulletted bool) *NtBlockBuilder {
 	if child := node.FirstChild(); child != nil {
 		// If we get here, it's safe to convert to rich text
 		if IsConvertableToRichText(child) {
-			mainContent = append(mainContent, flattenRichTexts(child)...)
+			mainContent = ExtractRichTexts(child)
 		}
 	}
 
@@ -561,7 +484,7 @@ func handleTaskItem(node mdast.Node) *NtBlockBuilder {
 	labels := make(NtRichTextBuilders, 0)
 	for next := checkbox.NextSibling(); next != nil; next = next.NextSibling() {
 		if IsConvertableToRichText(next) {
-			labels = append(labels, flattenRichTexts(next)...)
+			labels = append(labels, ExtractRichTexts(next)...)
 		}
 	}
 
@@ -573,11 +496,32 @@ func handleTaskItem(node mdast.Node) *NtBlockBuilder {
 	})
 }
 
-func tabLog(level int, message string) {
-	var tabs = ""
-	for i := 0; i < level; i++ {
-		tabs += " "
+func decorateRichTexts(parent mdast.Node, richTexts NtRichTextBuilders) NtRichTextBuilders {
+	// TODO" make immutable function
+	switch v := parent.(type) {
+	case *mdastx.Strikethrough:
+		for i := range richTexts {
+			richTexts[i].DecorateWith(strikethroughDecorator)
+		}
+	case *mdast.Emphasis:
+		for i := range richTexts {
+			if v.Level == 1 {
+				richTexts[i].DecorateWith(italicDecorator)
+			} else {
+				richTexts[i].DecorateWith(boldDecorator)
+			}
+		}
+	case *mdast.CodeSpan:
+		// Adding t.Annotations = code:true for each child
+		for i := range richTexts {
+			richTexts[i].DecorateWith(codeDecorator)
+		}
+
+	case *mdast.Link:
+		for i := range richTexts {
+			richTexts[i].DecorateWith(linkDecorator(string(v.Destination)))
+		}
 	}
 
-	slog.Debug(tabs + message)
+	return richTexts
 }
