@@ -3,6 +3,8 @@ package jalapeno
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	nt "github.com/jomei/notionapi"
 	md "github.com/yuin/goldmark"
@@ -352,11 +354,24 @@ func handleTable(node mdast.Node) NtBlockBuilders {
 // TODO: support HTML, at least paragraph, better lists + tables?
 func handleHTMLBlock(node mdast.Node) NtBlockBuilders {
 	richTexts := ExtractRichTexts(node)
+	// TODO find out why letter case is not preserved
 
 	return NtBlockBuilders{
 		NewNtBlockBuilder(func(source []byte) nt.Block {
+			// Weak solution but fine for now
+			saneContent := make([]nt.RichText, 0)
+			for _, rt := range richTexts.Build(source) {
+				cleaned := sanitizeMarkdownLintComments(rt.PlainText)
+				if cleaned == "" {
+					continue
+				}
+				rt.PlainText = cleaned
+				rt.Text.Content = cleaned
+				saneContent = append(saneContent, rt)
+			}
+
 			return nt.NewParagraphBlock(nt.Paragraph{
-				RichText: richTexts.Build(source),
+				RichText: saneContent,
 			})
 		}),
 	}
@@ -511,4 +526,11 @@ func decorateRichTexts(parent mdast.Node, richTexts NtRichTextBuilders) NtRichTe
 	}
 
 	return richTexts
+}
+
+var markdownLintRegex = regexp.MustCompile(`(?i)<!--\s*markdownlint-.*?-->`)
+
+// sanitizeMarkdownLintComments checks if the content is a markdownlint-disable comment
+func sanitizeMarkdownLintComments(content string) string {
+	return strings.TrimSpace(markdownLintRegex.ReplaceAllString(content, ""))
 }

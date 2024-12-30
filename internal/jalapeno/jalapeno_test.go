@@ -1148,5 +1148,21 @@ func main() {
 		}),
 	})
 
+	// Markdownlint should be ignored (omitted)
+	f("HTML Block with Markdownlint comment only", `<!-- markdownlint-disable blah blah-->`, nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{},
+			Children: nil,
+		}),
+	})
+	f("HTML Block with Markdownlint comment", `<!-- markdownlint-disable blah blah--><p>Hello</p>`, nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText(`<p>hello</p>`),
+			},
+			Children: nil,
+		}),
+	})
+
 	run()
 }
