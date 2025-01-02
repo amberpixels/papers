@@ -6,19 +6,21 @@ import nt "github.com/jomei/notionapi"
 // It builds a nt.RichText from a given source and optionally can decorate it aftew
 type NtRichTextBuilder struct {
 	build      func(source []byte) *nt.RichText
-	decorators []func(*nt.RichText)
+	decorators []RichTextDecorator
 }
+
+type RichTextDecorator func(*nt.RichText)
 
 type NtRichTextBuilders []*NtRichTextBuilder
 
 func NewNtRichTextBuilder(build func(source []byte) *nt.RichText) *NtRichTextBuilder {
 	return &NtRichTextBuilder{
 		build:      build,
-		decorators: make([]func(*nt.RichText), 0),
+		decorators: make([]RichTextDecorator, 0),
 	}
 }
 
-func (b *NtRichTextBuilder) DecorateWith(d func(*nt.RichText)) {
+func (b *NtRichTextBuilder) DecorateWith(d RichTextDecorator) {
 	b.decorators = append(b.decorators, d)
 }
 
@@ -51,4 +53,12 @@ var (
 	linkDecorator = func(urlDestination string) func(*nt.RichText) {
 		return func(t *nt.RichText) { t.MakeLink(urlDestination) }
 	}
+)
+
+var (
+	_ RichTextDecorator = boldDecorator
+	_ RichTextDecorator = italicDecorator
+	_ RichTextDecorator = strikethroughDecorator
+	_ RichTextDecorator = codeDecorator
+	_ RichTextDecorator = linkDecorator("google.com")
 )

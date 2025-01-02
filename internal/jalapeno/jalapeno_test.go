@@ -1104,12 +1104,21 @@ func main() {
 			}),
 		})
 
-	// TODO: doesn't work yet
-	xf("Image with URL caption", `[![Foobar](https://pkg.go.dev/badge/github.com/yuin/goldmark.svg)](https://google.com)`,
+	f("Image with URL caption", `[![Alt text](https://example.com/image.png)](https://google.com)`,
 		nt.Blocks{
 			nt.NewParagraphBlock(nt.Paragraph{
 				RichText: []nt.RichText{},
-				Children: nt.Blocks{},
+				Children: nt.Blocks{
+					nt.NewImageBlock(nt.Image{
+						Type: "external",
+						External: &nt.FileObject{
+							URL: "https://example.com/image.png",
+						},
+						Caption: []nt.RichText{
+							*nt.NewTextRichText("Alt text").MakeLink("https://google.com"),
+						},
+					}),
+				},
 			}),
 		})
 

@@ -74,23 +74,28 @@ func PrepareNotionPageProperties(blocks nt.Blocks) (nt.Blocks, nt.Properties) {
 
 // IsConvertableToRichText returns true if given Markdown AST node is convertable directly into notion RichText
 func IsConvertableToRichText(node mdast.Node) bool {
-	switch node.(type) {
-	case *mdast.Text,
-		*mdast.CodeBlock, *mdast.FencedCodeBlock,
-		*mdast.ListItem, *mdast.AutoLink,
-		*mdast.RawHTML, *mdast.HTMLBlock, *mdast.Paragraph,
-		*mdast.Emphasis, *mdastx.Strikethrough, *mdast.CodeSpan:
+	switch node.Kind() {
+	case
+		mdast.KindText, mdast.KindParagraph,
+		mdast.KindCodeBlock, mdast.KindFencedCodeBlock, mdast.KindCodeSpan,
+		mdast.KindEmphasis, mdastx.KindStrikethrough,
+		mdast.KindRawHTML, mdast.KindHTMLBlock,
+		mdast.KindListItem, mdast.KindAutoLink:
 		return true
-	case *mdast.Link:
-		// TODO: not yet working in full manner
-		if node.FirstChild() != nil && node.FirstChild().Kind() == mdast.KindImage {
-			return false
+
+	case mdast.KindLink, mdast.KindTextBlock:
+		// ensure that it doesn't have any block children inside
+		// those are Image and TaskCheckBox
+		nonCovertableChildrenKinds := map[mdast.NodeKind]struct{}{
+			mdast.KindImage:         {},
+			mdastx.KindTaskCheckBox: {},
 		}
-		return true
-	case *mdast.TextBlock:
-		if node.FirstChild() != nil && node.FirstChild().Kind() == mdastx.KindTaskCheckBox {
-			// NOCOV??
-			return false
+		if node.FirstChild() != nil {
+			if _, ok := nonCovertableChildrenKinds[node.FirstChild().Kind()]; ok {
+				return false
+			}
+
+			// should we recursively check children?
 		}
 		return true
 	default:
@@ -191,22 +196,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 			}),
 		}
 	case mdast.KindImage:
-		captionRichTexts := NtRichTextBuilders{}
-		if child := node.FirstChild(); child != nil {
-			captionRichTexts = ExtractRichTexts(child)
-		}
-
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return nt.NewImageBlock(nt.Image{
-					Type: nt.FileTypeExternal,
-					External: &nt.FileObject{
-						URL: string(node.(*mdast.Image).Destination), // nolint:errcheck
-					},
-					Caption: captionRichTexts.Build(source),
-				})
-			}),
-		}
+		return handleImage(node)
 	case mdastx.KindTable: // Use the extension AST for the Table node
 		return handleTable(node)
 	case mdast.KindHTMLBlock:
@@ -224,7 +214,7 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 		innerTexts := make(NtRichTextBuilders, 0)
 		innerBlocks := make(NtBlockBuilders, 0)
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			// if it's convertable to rich text and we didn't handle any blocks yet, we're OK to flatten
+			// if it's convertable to rich text, and we didn't handle any blocks yet, we're OK to flatten
 			// as soon as we met an inner block, all further children are considered as blocks as well
 			if IsConvertableToRichText(child) && len(innerBlocks) == 0 {
 				innerTexts = append(innerTexts, ExtractRichTexts(child)...)
@@ -244,6 +234,8 @@ func ToBlocks(node mdast.Node) NtBlockBuilders {
 		return handleBlockquote(node)
 	case mdast.KindList:
 		return handleList(node)
+	case mdast.KindLink:
+		return handleBlockLink(node)
 	case mdast.KindTextBlock:
 		richTexts := ExtractRichTexts(node)
 		return NtBlockBuilders{
@@ -274,6 +266,32 @@ func handleHeading(node mdast.Node) NtBlockBuilders {
 			headingLevel,
 		)
 	})}
+}
+
+func handleImage(node mdast.Node, decorations ...RichTextDecorator) NtBlockBuilders {
+	captionRichTexts := NtRichTextBuilders{}
+	if child := node.FirstChild(); child != nil {
+		captionRichTexts = ExtractRichTexts(child)
+	}
+	if len(captionRichTexts) > 0 && len(decorations) > 0 {
+		for _, rt := range captionRichTexts {
+			for _, d := range decorations {
+				rt.DecorateWith(d)
+			}
+		}
+	}
+
+	return NtBlockBuilders{
+		NewNtBlockBuilder(func(source []byte) nt.Block {
+			return nt.NewImageBlock(nt.Image{
+				Type: nt.FileTypeExternal,
+				External: &nt.FileObject{
+					URL: string(node.(*mdast.Image).Destination), // nolint:errcheck
+				},
+				Caption: captionRichTexts.Build(source),
+			})
+		}),
+	}
 }
 
 // handleTable handles custom logic of Markdown->Notion tables
@@ -421,6 +439,19 @@ func handleList(node mdast.Node) NtBlockBuilders {
 	}
 
 	return blocks
+}
+
+func handleBlockLink(node mdast.Node) NtBlockBuilders {
+	// Notion doesn't support block links natively
+	// In future it can be achieved with a custom Notion block
+	// For now we only support Images inside links, via linkifying the image caption
+	link := node.(*mdast.Link) // nolint:errcheck
+	image, ok := link.FirstChild().(*mdast.Image)
+	if !ok {
+		return nil
+	}
+
+	return handleImage(image, linkDecorator(string(link.Destination)))
 }
 
 // handleListItem handles MD's list item and its children
