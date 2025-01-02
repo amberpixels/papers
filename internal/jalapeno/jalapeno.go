@@ -2,7 +2,9 @@
 package jalapeno
 
 import (
+	"cmp"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -144,6 +146,13 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 
 			return nt.NewLinkRichText(label, link)
 		})
+	case *mdast.Link:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			link := string(v.Destination)
+			label := cmp.Or(string(v.Title), link)
+
+			return nt.NewLinkRichText(label, link)
+		})
 	case *mdast.RawHTML:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
 			content := html2notion(
@@ -166,9 +175,19 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 
 // ToBlocks converts given MD ast node into series of Notion Blocks
 // nolint: gocyclo // Will be OK after further refactor
-func ToBlocks(node mdast.Node) NtBlockBuilders {
+func ToBlocks(node mdast.Node) (result NtBlockBuilders) {
 	// Thoughts: First switch is used when ToBlocks was called from children handling (recursion)
 	// can we optimize it somehow?
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Warn(
+				"Panic in ToBlocks. Falling back to placeholder",
+				"node", node.Kind().String(),
+				"error", r,
+			)
+			result = NtBlockBuilders{handleUnknownNode(node)}
+		}
+	}()
 
 	// Pure flattening first:
 	switch node.Kind() {
@@ -525,6 +544,32 @@ func handleTaskItem(node mdast.Node) *NtBlockBuilder {
 		return nt.NewToDoBlock(nt.ToDo{
 			Checked:  checkbox.IsChecked,
 			RichText: labels.Build(source),
+		})
+	})
+}
+
+func handleUnknownNode(node mdast.Node, prefixMsgArg ...string) *NtBlockBuilder {
+	var prefixMsg = fmt.Sprintf("Unknown node[%s]", node.Kind())
+	if len(prefixMsgArg) > 0 {
+		prefixMsg = prefixMsgArg[0]
+	}
+	return NewNtBlockBuilder(func(source []byte) nt.Block {
+
+		richTexts := []nt.RichText{
+			*nt.NewTextRichText(prefixMsg),
+		}
+		if content := ToRichText(node); content != nil {
+			built := content.Build(source)
+			richTexts = append(richTexts, *nt.NewTextRichText(" -> "))
+			richTexts = append(richTexts, *built)
+		}
+		for i, rt := range richTexts {
+			paintedRed := rt.AnnotateColor(nt.ColorRed)
+			richTexts[i] = *paintedRed
+		}
+		return nt.NewParagraphBlock(nt.Paragraph{
+			RichText: richTexts,
+			Children: nt.Blocks{},
 		})
 	})
 }
