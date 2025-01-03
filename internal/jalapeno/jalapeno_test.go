@@ -1130,6 +1130,17 @@ func main() {
 		nt.NewDividerBlock(),
 	})
 
+	f("hack: markdown comment", `[a hidden comment]: #`, nt.Blocks{})
+
+	f("hack: comment between lines", `
+---
+[a hidden comment]: #
+---`,
+		nt.Blocks{
+			nt.NewDividerBlock(),
+			nt.NewDividerBlock(),
+		})
+
 	// --------------
 	// --- HTML -----
 	// --------------

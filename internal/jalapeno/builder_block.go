@@ -31,7 +31,11 @@ func (b *NtBlockBuilder) DecorateWith(d func(source []byte, block nt.Block)) {
 func (builders NtBlockBuilders) Build(source []byte) []nt.Block {
 	result := make([]nt.Block, 0)
 	for _, builder := range builders {
-		result = append(result, builder.Build(source))
+		// Some nodes (e.g. markdown hacky comments) can be handled as nil empty blocks
+		// let's just filter them out here
+		if built := builder.Build(source); built != nil {
+			result = append(result, built)
+		}
 	}
 
 	return result

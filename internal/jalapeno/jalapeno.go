@@ -167,7 +167,10 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 			)
 			return nt.NewTextRichText(content)
 		})
-
+	case *mdast.TextBlock:
+		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
+			return nt.NewTextRichText(string(contentFromLines(v, source)))
+		})
 	default:
 		return nil
 	}
@@ -220,6 +223,8 @@ func ToBlocks(node mdast.Node) (result NtBlockBuilders) {
 		return handleTable(node)
 	case mdast.KindHTMLBlock:
 		return handleHTMLBlock(node)
+	case mdast.KindTextBlock:
+		return handleTextBlock(node)
 	}
 
 	if node.ChildCount() == 0 {
@@ -256,14 +261,7 @@ func ToBlocks(node mdast.Node) (result NtBlockBuilders) {
 	case mdast.KindLink:
 		return handleBlockLink(node)
 	case mdast.KindTextBlock:
-		richTexts := ExtractRichTexts(node)
-		return NtBlockBuilders{
-			NewNtBlockBuilder(func(source []byte) nt.Block {
-				return nt.NewQuoteBlock(nt.Quote{
-					RichText: richTexts.Build(source),
-				})
-			}),
-		}
+		return handleTextBlock(node)
 	}
 
 	panic(fmt.Sprintf("unhandled node type: %s", node.Kind().String()))
@@ -471,6 +469,23 @@ func handleBlockLink(node mdast.Node) NtBlockBuilders {
 	}
 
 	return handleImage(image, linkDecorator(string(link.Destination)))
+}
+
+func handleTextBlock(node mdast.Node) NtBlockBuilders {
+	richTexts := ExtractRichTexts(node)
+
+	return NtBlockBuilders{
+		NewNtBlockBuilder(func(source []byte) nt.Block {
+			rts := nonEmptyRichTexts(richTexts.Build(source))
+			if len(rts) == 0 {
+				return nil
+			}
+
+			return nt.NewParagraphBlock(nt.Paragraph{
+				RichText: rts,
+			})
+		}),
+	}
 }
 
 // handleListItem handles MD's list item and its children
