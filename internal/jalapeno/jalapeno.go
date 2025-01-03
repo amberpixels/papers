@@ -155,17 +155,20 @@ func ToRichText(node mdast.Node) *NtRichTextBuilder {
 		})
 	case *mdast.RawHTML:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			content := html2notion(
-				string(contentFromSegments(v.Segments, source)),
-			)
-			return nt.NewTextRichText(content)
+			fmt.Println("=> ", string(source))
+			fmt.Println("~~~ ", string(contentFromSegments(v.Segments, source)))
+			return nt.NewTextRichText(string(contentFromSegments(v.Segments, source)))
+			//_, content, _ := html2notion(
+			//	string(contentFromSegments(v.Segments, source)),
+			//)
+			//return &content[0]
 		})
 	case *mdast.HTMLBlock:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {
-			content := html2notion(
+			_, content, _ := html2notion(
 				string(contentFromLines(v, source)),
 			)
-			return nt.NewTextRichText(content)
+			return &content[0]
 		})
 	case *mdast.TextBlock:
 		return NewNtRichTextBuilder(func(source []byte) *nt.RichText {

@@ -8,6 +8,7 @@ require (
 	github.com/jomei/notionapi v1.13.2
 	github.com/stretchr/testify v1.10.0
 	github.com/yuin/goldmark v1.7.8
+	golang.org/x/net v0.33.0
 )
 
 require (

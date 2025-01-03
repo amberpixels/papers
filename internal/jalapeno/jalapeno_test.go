@@ -1168,6 +1168,16 @@ func main() {
 		}),
 	})
 
+	ff("Raw HTML simple example", `Hello <em>World</em>`, nt.Blocks{
+		nt.NewParagraphBlock(nt.Paragraph{
+			RichText: []nt.RichText{
+				*nt.NewTextRichText("Hello "),
+				*nt.NewTextRichText("World").AnnotateItalic(),
+			},
+			Children: nt.Blocks{},
+		}),
+	})
+
 	// Markdownlint should be ignored (omitted)
 	f("HTML Block with Markdownlint comment only", `<!-- markdownlint-disable blah blah-->`, nt.Blocks{
 		nt.NewParagraphBlock(nt.Paragraph{
